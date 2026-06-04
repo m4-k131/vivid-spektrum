@@ -1,4 +1,5 @@
 use crate::colormap;
+use crate::freq_grid::{compute_grid_lines, ScaleConfig};
 use crate::{CoreError, SpectrumConfig, SpectrumProcessor};
 use image::{ImageBuffer, Rgb};
 use rayon::prelude::*;
@@ -72,6 +73,15 @@ pub fn render_spectrogram_png<P: AsRef<Path>>(
     config: &SpectrogramImageConfig,
     output: P,
 ) -> Result<(), CoreError> {
+    render_spectrogram_png_with_grid(columns, config, output, None)
+}
+
+pub fn render_spectrogram_png_with_grid<P: AsRef<Path>>(
+    columns: &[Vec<f32>],
+    config: &SpectrogramImageConfig,
+    output: P,
+    scale: Option<&ScaleConfig>,
+) -> Result<(), CoreError> {
     let width = config.width.max(1);
     let height = config.height.max(1);
     let bins = config.spectrum.log_bins.max(1);
@@ -94,9 +104,50 @@ pub fn render_spectrogram_png<P: AsRef<Path>>(
             img.put_pixel(x, y, Rgb(lut[idx]));
         }
     }
+
+    if let Some(scale_config) = scale {
+        let grid = compute_grid_lines(
+            scale_config,
+            config.spectrum.f_min_hz,
+            config.spectrum.f_max_hz,
+            height,
+            bins,
+        );
+        for line in grid {
+            let y = line.y_px.min(height - 1);
+            for x in 0..width {
+                draw_line_pixel(&mut img, x, y, &line.color, line.width);
+            }
+        }
+    }
+
     img.save(output)
         .map_err(|e| CoreError::Dsp(format!("failed to write PNG: {e}")))?;
     Ok(())
+}
+
+fn draw_line_pixel(img: &mut ImageBuffer<Rgb<u8>, Vec<u8>>, x: u32, y: u32, color: &[u8; 3], width: u8) {
+    let width = width.max(1);
+    let half = (width / 2) as i32;
+    let y_center = y as i32;
+
+    for dy in -half..=half {
+        let py = (y_center + dy) as u32;
+        if py < img.height() {
+            let existing = img.get_pixel(x, py);
+            let blended = blend_pixel(existing.0, *color);
+            img.put_pixel(x, py, Rgb(blended));
+        }
+    }
+}
+
+fn blend_pixel(bg: [u8; 3], fg: [u8; 3]) -> [u8; 3] {
+    let alpha = 0.7f32;
+    [
+        (fg[0] as f32 * alpha + bg[0] as f32 * (1.0 - alpha)).round() as u8,
+        (fg[1] as f32 * alpha + bg[1] as f32 * (1.0 - alpha)).round() as u8,
+        (fg[2] as f32 * alpha + bg[2] as f32 * (1.0 - alpha)).round() as u8,
+    ]
 }
 
 fn sample_index(pos: u32, extent: u32, len: usize) -> usize {

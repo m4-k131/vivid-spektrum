@@ -3,6 +3,8 @@ use clap::Parser;
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "windows")]
+mod windows;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "hyprgram", about = "PipeWire live spectrogram (Wayland window)")]
@@ -64,13 +66,17 @@ pub struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = args;
-        anyhow::bail!("hyprgram requires Linux with Wayland and PipeWire");
-    }
     #[cfg(target_os = "linux")]
     {
         linux::run(args)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::run(args)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        let _ = args;
+        anyhow::bail!("hyprgram requires Linux or Windows")
     }
 }

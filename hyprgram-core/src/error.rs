@@ -6,6 +6,8 @@ pub enum CoreError {
     UnsupportedPlatform,
     #[error("pipewire error: {0}")]
     Pipewire(String),
+    #[error("audio error: {0}")]
+    Audio(String),
     #[error("no default audio sink found; pass --target-object explicitly")]
     NoDefaultSink,
     #[error("dsp: {0}")]

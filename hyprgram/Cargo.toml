@@ -14,3 +14,7 @@ symphonia = { version = "0.5", default-features = false, features = ["aac", "fla
 [target.'cfg(target_os = "linux")'.dependencies]
 bytemuck = { version = "1.21", features = ["derive"] }
 iced = { version = "0.14", default-features = false, features = ["wgpu", "wayland", "tokio"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+bytemuck = { version = "1.21", features = ["derive"] }
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tokio"] }
