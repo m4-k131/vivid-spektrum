@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 default-run = "hyprgram"
 
+[[bin]]
+name = "kde_overlay"
+path = "src/bin/kde_overlay.rs"
+required-features = []
+
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
@@ -14,6 +19,7 @@ symphonia = { version = "0.5", default-features = false, features = ["aac", "fla
 [target.'cfg(target_os = "linux")'.dependencies]
 bytemuck = { version = "1.21", features = ["derive"] }
 iced = { version = "0.14", default-features = false, features = ["wgpu", "wayland", "tokio"] }
+iced_layershell = { version = "0.14.2", default-features = false, features = ["wgpu"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 bytemuck = { version = "1.21", features = ["derive"] }

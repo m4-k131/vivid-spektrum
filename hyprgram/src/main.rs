@@ -58,6 +58,16 @@ pub struct Args {
     pub sample_rate: Option<u32>,
     #[arg(long, help = "Scroll time top-to-bottom instead of right-to-left")]
     pub legacy_vertical_scroll: bool,
+    #[arg(long, help = "Remove window title bar and decorations")]
+    pub no_decorations: bool,
+    #[arg(long, help = "Keep window always on top of other windows")]
+    pub always_on_top: bool,
+    #[arg(long, help = "Keep window always below other windows (desktop widget)")]
+    pub always_on_bottom: bool,
+    #[arg(long, help = "Enable transparent window background")]
+    pub transparent: bool,
+    #[arg(long, help = "Window position as X,Y (e.g. 100,50)")]
+    pub position: Option<String>,
 }
 
 // Phase 4 manual verification (Linux/Wayland):

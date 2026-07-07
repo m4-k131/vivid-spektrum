@@ -131,12 +131,33 @@ fn subscription(_app: &App) -> Subscription<Message> {
 
 pub fn run(args: Args) -> anyhow::Result<()> {
     let size = Size::new(args.width.unwrap_or(800) as f32, args.height.unwrap_or(200) as f32);
-    iced::application(move || App::bootstrap(args.clone()), update, view)
+    let level = if args.always_on_top {
+        iced::window::Level::AlwaysOnTop
+    } else if args.always_on_bottom {
+        iced::window::Level::AlwaysOnBottom
+    } else {
+        iced::window::Level::Normal
+    };
+    let position = args.position.as_deref().and_then(|s| {
+        let mut parts = s.splitn(2, ',');
+        let x: f32 = parts.next()?.trim().parse().ok()?;
+        let y: f32 = parts.next()?.trim().parse().ok()?;
+        Some(iced::window::Position::Specific(iced::Point::new(x, y)))
+    });
+    let no_decorations = args.no_decorations;
+    let transparent = args.transparent;
+    let mut app = iced::application(move || App::bootstrap(args.clone()), update, view)
         .title("hyprgram")
         .window_size(size)
-        .centered()
         .subscription(subscription)
         .theme(iced::Theme::Dark)
-        .run()
-        .map_err(|e| anyhow::anyhow!("{e:?}"))
+        .decorations(!no_decorations)
+        .transparent(transparent)
+        .level(level);
+    if let Some(pos) = position {
+        app = app.position(pos);
+    } else {
+        app = app.centered();
+    }
+    app.run().map_err(|e| anyhow::anyhow!("{e:?}"))
 }
