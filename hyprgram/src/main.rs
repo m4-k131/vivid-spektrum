@@ -84,10 +84,16 @@ pub struct Args {
     pub contrast: f32,
     #[arg(long, default_value_t = 1.0, help = "GPU saturation (1.0=neutral, 0=grayscale, >1 oversaturated)")]
     pub saturation: f32,
+    #[arg(long, help = "Frequency overlay (builtin name or path to .toml file, e.g. treble-bass, guitar-standard, a440)")]
+    pub overlay: Option<String>,
+    #[arg(long, help = "Print performance profiling stats (DSP, GPU, queue) every second")]
+    pub debug_profile: bool,
     #[arg(long, help = "List available builtin colormaps and exit")]
     pub list_colormaps: bool,
     #[arg(long, help = "List available preset configs and exit")]
     pub list_presets: bool,
+    #[arg(long, help = "List available overlay files and exit")]
+    pub list_overlays: bool,
 }
 
 // Phase 4 manual verification (Linux/Wayland):
@@ -124,6 +130,14 @@ fn main() -> Result<()> {
                 }
             }
         }
+        return Ok(());
+    }
+    if args.list_overlays {
+        println!("Available overlays (use with --overlay):");
+        for name in hyprgram_core::overlay::builtin_overlay_names() {
+            println!("  --overlay {}", name);
+        }
+        println!("\nOr pass a path to a custom .toml overlay file.");
         return Ok(());
     }
     #[cfg(target_os = "linux")]

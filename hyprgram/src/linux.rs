@@ -1,7 +1,7 @@
 use crate::Args;
 use hyprgram::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 use hyprgram::spectrogram::SpectrogramProgram;
-use hyprgram_core::{profiles, resolve_colormap, sample_ring_pair, SpectrumProcessor};
+use hyprgram_core::{overlay, profiles, resolve_colormap, sample_ring_pair, SpectrumProcessor};
 use iced::widget::container;
 use iced::widget::shader::Shader;
 use iced::{Element, Length, Size, Subscription, Task};
@@ -105,25 +105,73 @@ impl App {
             window_latency_ms, centered_latency_ms, total_latency_ms,
             sr / spectrum.hop_size as f32,
         );
+        let debug_profile = args.debug_profile;
         std::thread::spawn(move || {
             let mut scratch = vec![0.0f32; 65536];
+            let mut prof_last = Instant::now();
+            let mut prof_dsp_us: u64 = 0;
+            let mut prof_cols: u64 = 0;
+            let mut prof_samples: u64 = 0;
             loop {
                 let n = consumer.pop_into(&mut scratch);
                 if n == 0 {
                     std::thread::sleep(Duration::from_micros(500));
                     continue;
                 }
+                let t0 = Instant::now();
                 let mut cols = Vec::new();
                 proc.push_samples(&scratch[..n], &mut cols);
+                let dsp_elapsed = t0.elapsed();
                 let mut q = pending_w.lock().unwrap();
-                for c in cols {
+                for c in &cols {
                     while q.len() >= backlog_cap {
                         q.pop_front();
                     }
-                    q.push_back(c);
+                    q.push_back(c.clone());
+                }
+                if debug_profile {
+                    prof_dsp_us += dsp_elapsed.as_micros() as u64;
+                    prof_cols += cols.len() as u64;
+                    prof_samples += n as u64;
+                    let elapsed = prof_last.elapsed();
+                    if elapsed >= Duration::from_secs(1) {
+                        let secs = elapsed.as_secs_f64();
+                        eprintln!(
+                            "[profile] DSP: {:.1}ms/sec total | {:.2}ms/col avg | cols/sec: {:.0} | samples/sec: {:.0}",
+                            prof_dsp_us as f64 / 1000.0 / secs,
+                            if prof_cols > 0 { prof_dsp_us as f64 / prof_cols as f64 / 1000.0 } else { 0.0 },
+                            prof_cols as f64 / secs,
+                            prof_samples as f64 / secs,
+                        );
+                        prof_last = Instant::now();
+                        prof_dsp_us = 0;
+                        prof_cols = 0;
+                        prof_samples = 0;
+                    }
                 }
             }
         });
+        let (overlay_lines, overlay_color, overlay_opacity, overlay_thickness) = if let Some(ref name) = args.overlay {
+            let cfg = overlay::load_overlay(name)
+                .unwrap_or_else(|| panic!("unknown overlay '{}'. Available: {:?}", name, overlay::builtin_overlay_names()));
+            let f_min = spectrum.f_min_hz;
+            let f_max = spectrum.f_max_hz;
+            let exp = spectrum.freq_scale_exp.max(0.1);
+            let log_range = (f_max / f_min).ln();
+            let lines: Vec<f32> = cfg.lines.iter()
+                .map(|l| l.freq)
+                .filter(|&f| f >= f_min && f <= f_max)
+                .map(|f| {
+                    let t = (f / f_min).ln() / log_range;
+                    let bin_pos = t.powf(1.0 / exp);
+                    1.0 - bin_pos
+                })
+                .collect();
+            let color = [cfg.color[0] as f32 / 255.0, cfg.color[1] as f32 / 255.0, cfg.color[2] as f32 / 255.0];
+            (lines, color, cfg.opacity, cfg.thickness)
+        } else {
+            (Vec::new(), [0.9, 0.9, 0.9], 0.6, 0.003)
+        };
         Self {
             prog: SpectrogramProgram {
                 pending_spectra,
@@ -135,6 +183,11 @@ impl App {
                 colormap_lut,
                 contrast: args.contrast,
                 saturation: args.saturation,
+                debug_profile,
+                overlay_lines,
+                overlay_color,
+                overlay_opacity,
+                overlay_thickness,
             },
             fullscreen: false,
             last_click: None,

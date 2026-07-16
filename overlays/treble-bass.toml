@@ -1,0 +1,42 @@
+name = "treble-bass"
+description = "Standard treble + bass staff lines (E3-F4, E5-F6)"
+
+[[lines]]
+freq = 164.81
+label = "E3"
+
+[[lines]]
+freq = 196.00
+label = "G3"
+
+[[lines]]
+freq = 246.94
+label = "B3"
+
+[[lines]]
+freq = 293.66
+label = "D4"
+
+[[lines]]
+freq = 349.23
+label = "F4"
+
+[[lines]]
+freq = 659.25
+label = "E5"
+
+[[lines]]
+freq = 783.99
+label = "G5"
+
+[[lines]]
+freq = 987.77
+label = "B5"
+
+[[lines]]
+freq = 1174.66
+label = "D6"
+
+[[lines]]
+freq = 1396.91
+label = "F6"

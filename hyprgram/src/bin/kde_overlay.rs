@@ -173,6 +173,11 @@ mod inner {
             colormap_lut: Arc::new(default_colormap().build_lut_rgba(256)),
             contrast: 1.0,
             saturation: 1.0,
+            debug_profile: false,
+            overlay_lines: Vec::new(),
+            overlay_color: [0.9, 0.9, 0.9],
+            overlay_opacity: 0.6,
+            overlay_thickness: 0.003,
         };
 
         let anchor = parse_anchor(&args.anchor);

@@ -1,0 +1,30 @@
+name = "a440"
+description = "Concert A across octaves (A1-A7)"
+
+[[lines]]
+freq = 55.00
+label = "A1"
+
+[[lines]]
+freq = 110.00
+label = "A2"
+
+[[lines]]
+freq = 220.00
+label = "A3"
+
+[[lines]]
+freq = 440.00
+label = "A4"
+
+[[lines]]
+freq = 880.00
+label = "A5"
+
+[[lines]]
+freq = 1760.00
+label = "A6"
+
+[[lines]]
+freq = 3520.00
+label = "A7"

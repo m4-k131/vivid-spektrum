@@ -6,6 +6,7 @@ use iced::Rectangle;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 const WGSL: &str = r#"
 struct Uniforms {
@@ -15,8 +16,12 @@ struct Uniforms {
     mode: u32,
     contrast: f32,
     saturation: f32,
-    _pad0: f32,
-    _pad1: f32,
+    overlay_count: u32,
+    overlay_thickness: f32,
+    overlay_color: vec4<f32>,
+    overlay_a: vec4<f32>,
+    overlay_b: vec4<f32>,
+    overlay_c: vec4<f32>,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var tex: texture_2d<f32>;
@@ -40,24 +45,45 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
     o.uv = p * vec2(0.5, -0.5) + vec2(0.5, 0.5);
     return o;
 }
+fn get_overlay_line(i: u32) -> f32 {
+    if (i < 4u) {
+        return u.overlay_a[i];
+    } else if (i < 8u) {
+        return u.overlay_b[i - 4u];
+    } else {
+        return u.overlay_c[i - 8u];
+    }
+}
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var tx: f32;
     var ty: f32;
+    var freq_axis: f32;
     if (u.mode == 0u) {
         tx = 1.0 - in.uv.y;
         ty = fract(in.uv.x + u.scroll);
+        freq_axis = in.uv.y;
     } else {
         tx = 1.0 - in.uv.x;
         ty = fract(in.uv.y + u.scroll);
+        freq_axis = in.uv.x;
     }
     var mag = textureSample(tex, samp, vec2(tx, ty)).r;
-    // Contrast: pivot around 0.5
     mag = clamp((mag - 0.5) * u.contrast + 0.5, 0.0, 1.0);
     var c = textureSample(cmap_tex, cmap_samp, vec2(mag, 0.5)).rgb;
-    // Saturation: mix towards luminance
     let lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = mix(vec3(lum), c, u.saturation);
+    var overlay_alpha = 0.0;
+    for (var i = 0u; i < u.overlay_count; i = i + 1u) {
+        let line_pos = get_overlay_line(i);
+        let dist = abs(freq_axis - line_pos);
+        if (dist < u.overlay_thickness) {
+            overlay_alpha = max(overlay_alpha, 1.0 - dist / u.overlay_thickness);
+        }
+    }
+    if (overlay_alpha > 0.0) {
+        c = mix(c, u.overlay_color.rgb, overlay_alpha * u.overlay_color.a);
+    }
     return vec4(c, 1.0);
 }
 "#;
@@ -71,8 +97,12 @@ struct Uniforms {
     mode: u32,
     contrast: f32,
     saturation: f32,
-    _pad0: f32,
-    _pad1: f32,
+    overlay_count: u32,
+    overlay_thickness: f32,
+    overlay_color: [f32; 4],
+    overlay_a: [f32; 4],
+    overlay_b: [f32; 4],
+    overlay_c: [f32; 4],
 }
 
 #[derive(Clone)]
@@ -85,6 +115,11 @@ pub struct SpectrogramProgram {
     pub colormap_lut: Arc<Vec<[u8; 4]>>,
     pub contrast: f32,
     pub saturation: f32,
+    pub debug_profile: bool,
+    pub overlay_lines: Vec<f32>,
+    pub overlay_color: [f32; 3],
+    pub overlay_opacity: f32,
+    pub overlay_thickness: f32,
 }
 
 pub struct SpectrogramPrimitive {
@@ -95,6 +130,11 @@ pub struct SpectrogramPrimitive {
     pub colormap_lut: Arc<Vec<[u8; 4]>>,
     pub contrast: f32,
     pub saturation: f32,
+    pub debug_profile: bool,
+    pub overlay_lines: Vec<f32>,
+    pub overlay_color: [f32; 3],
+    pub overlay_opacity: f32,
+    pub overlay_thickness: f32,
 }
 
 impl fmt::Debug for SpectrogramPrimitive {
@@ -120,6 +160,10 @@ pub struct SpectrogramGpu {
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
     write_row: u32,
+    prof_last_report: Instant,
+    prof_prepare_us: u64,
+    prof_cols_uploaded: u64,
+    prof_frames: u64,
 }
 
 fn make_bind_group(
@@ -308,6 +352,10 @@ impl shader::Pipeline for SpectrogramGpu {
             bind_group,
             pipeline,
             write_row: 0,
+            prof_last_report: Instant::now(),
+            prof_prepare_us: 0,
+            prof_cols_uploaded: 0,
+            prof_frames: 0,
         }
     }
 }
@@ -322,6 +370,7 @@ impl shader::Primitive for SpectrogramPrimitive {
         _bounds: &Rectangle,
         _viewport: &shader::Viewport,
     ) {
+        let prepare_start = Instant::now();
         let w = self.bins.max(1);
         let h = self.history.max(1);
         let need = device.limits().max_texture_dimension_2d;
@@ -380,6 +429,7 @@ impl shader::Primitive for SpectrogramPrimitive {
             );
             pipeline.write_row = 0;
         }
+        let prev_write_row = pipeline.write_row;
         let mut row_u8 = vec![0u8; w as usize];
         let mut last_y: Option<u32> = None;
         loop {
@@ -417,6 +467,15 @@ impl shader::Primitive for SpectrogramPrimitive {
         }
         if let Some(y) = last_y {
             let scroll = (y as f32 + 1.0) / (h as f32);
+            let mut overlay_a = [0.0f32; 4];
+            let mut overlay_b = [0.0f32; 4];
+            let mut overlay_c = [0.0f32; 4];
+            let count = self.overlay_lines.len().min(12);
+            for (i, &v) in self.overlay_lines.iter().take(12).enumerate() {
+                if i < 4 { overlay_a[i] = v; }
+                else if i < 8 { overlay_b[i - 4] = v; }
+                else { overlay_c[i - 8] = v; }
+            }
             let u = Uniforms {
                 scroll,
                 tex_w: w as f32,
@@ -424,10 +483,37 @@ impl shader::Primitive for SpectrogramPrimitive {
                 mode: if self.dev.scroll_right_to_left { 0 } else { 1 },
                 contrast: self.contrast,
                 saturation: self.saturation,
-                _pad0: 0.0,
-                _pad1: 0.0,
+                overlay_count: count as u32,
+                overlay_thickness: self.overlay_thickness,
+                overlay_color: [self.overlay_color[0], self.overlay_color[1], self.overlay_color[2], self.overlay_opacity],
+                overlay_a,
+                overlay_b,
+                overlay_c,
             };
             queue.write_buffer(&pipeline.uniform, 0, bytemuck::bytes_of(&u));
+        }
+        if self.debug_profile {
+            let cols_this_frame = if last_y.is_some() { pipeline.write_row.wrapping_sub(prev_write_row) as u64 } else { 0 };
+            pipeline.prof_prepare_us += prepare_start.elapsed().as_micros() as u64;
+            pipeline.prof_cols_uploaded += cols_this_frame;
+            pipeline.prof_frames += 1;
+            let elapsed = pipeline.prof_last_report.elapsed();
+            if elapsed >= std::time::Duration::from_secs(1) {
+                let secs = elapsed.as_secs_f64();
+                let queue_depth = self.pending_spectra.lock().unwrap().len();
+                eprintln!(
+                    "[profile] GPU: {:.1} fps | prepare: {:.1}ms/frame avg | cols/sec: {:.0} | queue: {} | texture: {}x{}",
+                    pipeline.prof_frames as f64 / secs,
+                    (pipeline.prof_prepare_us as f64 / pipeline.prof_frames.max(1) as f64) / 1000.0,
+                    pipeline.prof_cols_uploaded as f64 / secs,
+                    queue_depth,
+                    w, h,
+                );
+                pipeline.prof_last_report = Instant::now();
+                pipeline.prof_prepare_us = 0;
+                pipeline.prof_cols_uploaded = 0;
+                pipeline.prof_frames = 0;
+            }
         }
     }
     fn draw(
@@ -465,6 +551,11 @@ impl<Message: 'static> shader::Program<Message> for SpectrogramProgram {
             colormap_lut: self.colormap_lut.clone(),
             contrast: self.contrast,
             saturation: self.saturation,
+            debug_profile: self.debug_profile,
+            overlay_lines: self.overlay_lines.clone(),
+            overlay_color: self.overlay_color,
+            overlay_opacity: self.overlay_opacity,
+            overlay_thickness: self.overlay_thickness,
         }
     }
     fn mouse_interaction(

@@ -4,6 +4,7 @@ pub mod colormap;
 pub mod dsp;
 pub mod error;
 pub mod freq_grid;
+pub mod overlay;
 #[cfg(target_os = "linux")]
 pub mod pipewire;
 #[cfg(target_os = "windows")]
