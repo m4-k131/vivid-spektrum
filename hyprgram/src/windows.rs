@@ -1,7 +1,7 @@
 use crate::Args;
 use hyprgram::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 use hyprgram::spectrogram::SpectrogramProgram;
-use hyprgram_core::{profiles, SampleRing, SpectrumProcessor};
+use hyprgram_core::{profiles, resolve_colormap, SampleRing, SpectrumProcessor};
 use iced::widget::container;
 use iced::widget::shader::Shader;
 use iced::{Element, Length, Size, Subscription, Task};
@@ -71,7 +71,9 @@ impl App {
         if let Some(v) = args.cqt_bpo { spectrum.cqt_bins_per_octave = v; }
         if let Some(v) = args.freq_scale_exp { spectrum.freq_scale_exp = v; }
         if args.centered { spectrum.centered = true; }
-        let _colormap_name = args.colormap.as_deref().unwrap_or("viridis");
+        let colormap = resolve_colormap(args.colormap.as_deref().unwrap_or("viridis"))
+            .expect("invalid colormap");
+        let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
         let img = profile.image.as_ref();
         let width = args.width.unwrap_or(img.map_or(800, |i| i.width));
         let height = args.height.unwrap_or(img.map_or(200, |i| i.height));
@@ -111,6 +113,9 @@ impl App {
                 dev: SpectrogramDevConfig {
                     scroll_right_to_left: rtl,
                 },
+                colormap_lut,
+                contrast: args.contrast,
+                saturation: args.saturation,
             },
         }
     }

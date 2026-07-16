@@ -72,6 +72,14 @@ pub struct Args {
     pub freq_scale_exp: Option<f32>,
     #[arg(long, help = "Centered analysis window (adds half-window latency for better frequency accuracy)")]
     pub centered: bool,
+    #[arg(long, default_value_t = 1.0, help = "GPU contrast (1.0=neutral, >1 increases, <1 decreases)")]
+    pub contrast: f32,
+    #[arg(long, default_value_t = 1.0, help = "GPU saturation (1.0=neutral, 0=grayscale, >1 oversaturated)")]
+    pub saturation: f32,
+    #[arg(long, help = "List available builtin colormaps and exit")]
+    pub list_colormaps: bool,
+    #[arg(long, help = "List available preset configs and exit")]
+    pub list_presets: bool,
 }
 
 // Phase 4 manual verification (Linux/Wayland):
@@ -80,6 +88,36 @@ pub struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if args.list_colormaps {
+        println!("Available colormaps:");
+        for name in hyprgram_core::builtin_colormap_names() {
+            println!("  {}", name);
+        }
+        println!("\nOr pass a path to a custom .toml colormap file.");
+        return Ok(());
+    }
+    if args.list_presets {
+        println!("Available preset configs (use with --config):");
+        for name in hyprgram_core::profiles::builtin_profile_names() {
+            println!("  --profile {}", name);
+        }
+        let presets_dir = std::path::Path::new("presets");
+        if presets_dir.is_dir() {
+            println!("\nPreset files in presets/:");
+            if let Ok(entries) = std::fs::read_dir(presets_dir) {
+                let mut names: Vec<String> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
+                    .map(|e| e.path().display().to_string())
+                    .collect();
+                names.sort();
+                for name in names {
+                    println!("  --config {}", name);
+                }
+            }
+        }
+        return Ok(());
+    }
     #[cfg(target_os = "linux")]
     {
         linux::run(args)

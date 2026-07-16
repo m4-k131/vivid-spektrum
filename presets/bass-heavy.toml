@@ -1,0 +1,27 @@
+# Bass-heavy profile — emphasizes sub-bass and bass frequencies
+# freq_scale_exp > 1.0 gives more screen space to low frequencies.
+# Good for electronic music, hip-hop, bass guitar monitoring.
+# Usage: cargo run --bin hyprgram -- --config presets/bass-heavy.toml
+
+[spectrum]
+window_size = 16384
+hop_size = 512
+sample_rate = 48000
+log_bins = 1024
+f_min_hz = 16.0
+f_max_hz = 16000.0
+db_floor = -85.0
+db_ceil = 0.0
+window_fn = "blackman-harris"
+band_aggregation = "triangular"
+freq_smoothing_sigma = 1.2
+amplitude_gamma = 0.5
+temporal_alpha = 0.35
+peak_hold_decay = 0.9
+freq_scale_exp = 1.5
+
+[image]
+width = 800
+height = 250
+scroll_right_to_left = true
+colormap = "heat"

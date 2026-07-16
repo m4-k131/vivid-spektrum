@@ -112,7 +112,7 @@ fn generate_scale_lines(
     let mut lines = Vec::new();
 
     for oct in octaves.start..=octaves.end {
-        for (_, &interval) in intervals.iter().enumerate() {
+        for &interval in intervals.iter() {
             let semitones = (oct * 12) as f32 + interval - (root_semitones - 69.0);
             let freq = 440.0 * root_a4_offset * 2.0_f32.powf(semitones / 12.0);
             let note_name = semitones_to_note(((root_semitones as i32 + interval as i32) % 12) as u8);
@@ -225,7 +225,7 @@ pub fn compute_grid_lines(
         });
     }
 
-    result.sort_by(|a, b| a.y_px.cmp(&b.y_px));
+    result.sort_by_key(|a| a.y_px);
     result.dedup_by(|a, b| (a.y_px as i32 - b.y_px as i32).abs() < 2);
 
     result

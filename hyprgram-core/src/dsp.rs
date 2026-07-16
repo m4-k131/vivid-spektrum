@@ -82,6 +82,7 @@ pub enum BandAggregation {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SpectrumConfig {
     pub window_size: usize,
     pub hop_size: usize,
@@ -273,7 +274,7 @@ impl SpectrumProcessor {
                 }
             }
             BandAggregation::Triangular => {
-                for i in 0..col.len() {
+                for (i, val) in col.iter_mut().enumerate() {
                     let mut mag_sum = 0.0f32;
                     let mut weight_sum = 0.0f32;
                     for &(k, w) in &self.band_weights[i] {
@@ -286,7 +287,7 @@ impl SpectrumProcessor {
                     let mag = if weight_sum > 0.0 { mag_sum / weight_sum } else { 0.0 };
                     let db = 20.0 * (mag + 1e-12).log10();
                     let u = ((db - self.cfg.db_floor) / (self.cfg.db_ceil - self.cfg.db_floor).max(1e-9)).clamp(0.0, 1.0);
-                    col[i] = u;
+                    *val = u;
                 }
             }
         }
@@ -313,7 +314,7 @@ impl SpectrumProcessor {
             }
         }
     }
-    fn apply_temporal(&mut self, col: &mut Vec<f32>) {
+    fn apply_temporal(&mut self, col: &mut [f32]) {
         let alpha = self.cfg.temporal_alpha;
         let decay = self.cfg.peak_hold_decay;
         if alpha > 0.0 && self.prev_column.len() == col.len() {
@@ -323,7 +324,7 @@ impl SpectrumProcessor {
         }
         if decay > 0.0 {
             if self.peak_column.len() != col.len() {
-                self.peak_column = col.clone();
+                self.peak_column = col.to_vec();
             } else {
                 for (v, peak) in col.iter().zip(self.peak_column.iter_mut()) {
                     *peak = (*v).max(*peak * decay);
@@ -331,7 +332,7 @@ impl SpectrumProcessor {
                 col.copy_from_slice(&self.peak_column);
             }
         }
-        self.prev_column = col.clone();
+        self.prev_column = col.to_vec();
     }
 }
 
@@ -406,7 +407,7 @@ fn build_weighting_weights(cfg: &SpectrumConfig) -> Vec<f32> {
     match cfg.weighting {
         Weighting::None => {}
         Weighting::A => {
-            for k in 0..n_bins {
+            for (k, wt) in w.iter_mut().enumerate() {
                 let f = k as f32 * sr / nfft as f32;
                 let f2 = f * f;
                 let num = 12194.0f32.powi(2) * f2 * f2;
@@ -424,11 +425,11 @@ fn build_weighting_weights(cfg: &SpectrumConfig) -> Vec<f32> {
                     * (ref_f2 + 12194.0f32.powi(2));
                 let ra_ref = ref_num / ref_den;
                 let a_weight = if ra_ref > 0.0 { ra / ra_ref } else { 1.0 };
-                w[k] = a_weight;
+                *wt = a_weight;
             }
         }
         Weighting::C => {
-            for k in 0..n_bins {
+            for (k, wt) in w.iter_mut().enumerate() {
                 let f = k as f32 * sr / nfft as f32;
                 let f2 = f * f;
                 let num = 12194.0f32.powi(2) * f2;
@@ -440,7 +441,7 @@ fn build_weighting_weights(cfg: &SpectrumConfig) -> Vec<f32> {
                 let ref_den = (ref_f2 + 20.6f32.powi(2)) * (ref_f2 + 12194.0f32.powi(2));
                 let rc_ref = ref_num / ref_den;
                 let c_weight = if rc_ref > 0.0 { rc / rc_ref } else { 1.0 };
-                w[k] = c_weight;
+                *wt = c_weight;
             }
         }
     }

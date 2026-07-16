@@ -13,10 +13,16 @@ struct Uniforms {
     tex_w: f32,
     tex_h: f32,
     mode: u32,
+    contrast: f32,
+    saturation: f32,
+    _pad0: f32,
+    _pad1: f32,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
+@group(0) @binding(3) var cmap_tex: texture_2d<f32>;
+@group(0) @binding(4) var cmap_samp: sampler;
 struct VsOut {
     @builtin(position) clip_pos: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -34,14 +40,6 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VsOut {
     o.uv = p * vec2(0.5, -0.5) + vec2(0.5, 0.5);
     return o;
 }
-fn viridis(t: f32) -> vec3<f32> {
-    let x = clamp(t, 0.0, 1.0);
-    return vec3(
-        -0.148 + x * (4.07 + x * (-6.86 + x * (4.83 - x * 1.37))),
-        0.102 + x * (0.62 + x * (1.54 + x * (-3.44 + x * 2.02))),
-        0.195 + x * (0.02 + x * (4.31 + x * (-7.02 + x * 3.24)))
-    );
-}
 @fragment
 fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var tx: f32;
@@ -53,8 +51,13 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
         tx = 1.0 - in.uv.x;
         ty = fract(in.uv.y + u.scroll);
     }
-    let mag = textureSample(tex, samp, vec2(tx, ty)).r;
-    let c = viridis(mag);
+    var mag = textureSample(tex, samp, vec2(tx, ty)).r;
+    // Contrast: pivot around 0.5
+    mag = clamp((mag - 0.5) * u.contrast + 0.5, 0.0, 1.0);
+    var c = textureSample(cmap_tex, cmap_samp, vec2(mag, 0.5)).rgb;
+    // Saturation: mix towards luminance
+    let lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    c = mix(vec3(lum), c, u.saturation);
     return vec4(c, 1.0);
 }
 "#;
@@ -66,6 +69,10 @@ struct Uniforms {
     tex_w: f32,
     tex_h: f32,
     mode: u32,
+    contrast: f32,
+    saturation: f32,
+    _pad0: f32,
+    _pad1: f32,
 }
 
 #[derive(Clone)]
@@ -75,6 +82,9 @@ pub struct SpectrogramProgram {
     pub bins: u32,
     pub min_history: u32,
     pub dev: SpectrogramDevConfig,
+    pub colormap_lut: Arc<Vec<[u8; 4]>>,
+    pub contrast: f32,
+    pub saturation: f32,
 }
 
 pub struct SpectrogramPrimitive {
@@ -82,6 +92,9 @@ pub struct SpectrogramPrimitive {
     pub bins: u32,
     pub history: u32,
     pub dev: SpectrogramDevConfig,
+    pub colormap_lut: Arc<Vec<[u8; 4]>>,
+    pub contrast: f32,
+    pub saturation: f32,
 }
 
 impl fmt::Debug for SpectrogramPrimitive {
@@ -100,6 +113,10 @@ pub struct SpectrogramGpu {
     texture_view: wgpu::TextureView,
     sampler: wgpu::Sampler,
     uniform: wgpu::Buffer,
+    cmap_texture: wgpu::Texture,
+    cmap_view: wgpu::TextureView,
+    cmap_sampler: wgpu::Sampler,
+    cmap_uploaded: bool,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
     write_row: u32,
@@ -111,6 +128,8 @@ fn make_bind_group(
     uniform: &wgpu::Buffer,
     view: &wgpu::TextureView,
     sampler: &wgpu::Sampler,
+    cmap_view: &wgpu::TextureView,
+    cmap_sampler: &wgpu::Sampler,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("hyprgram-bg"),
@@ -127,6 +146,14 @@ fn make_bind_group(
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::TextureView(cmap_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::Sampler(cmap_sampler),
             },
         ],
     })
@@ -148,8 +175,16 @@ impl shader::Pipeline for SpectrogramGpu {
             label: Some("hyprgram-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let cmap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("hyprgram-cmap-sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -171,14 +206,30 @@ impl shader::Pipeline for SpectrogramGpu {
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
                         view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -193,12 +244,27 @@ impl shader::Pipeline for SpectrogramGpu {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R32Float,
+            format: wgpu::TextureFormat::R8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = make_bind_group(device, &bind_group_layout, &uniform, &texture_view, &sampler);
+        let cmap_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("hyprgram-cmap"),
+            size: wgpu::Extent3d {
+                width: 256,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let cmap_view = cmap_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = make_bind_group(device, &bind_group_layout, &uniform, &texture_view, &sampler, &cmap_view, &cmap_sampler);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("hyprgram-pl"),
             bind_group_layouts: &[&bind_group_layout],
@@ -235,6 +301,10 @@ impl shader::Pipeline for SpectrogramGpu {
             texture_view,
             sampler,
             uniform,
+            cmap_texture,
+            cmap_view,
+            cmap_sampler,
+            cmap_uploaded: false,
             bind_group,
             pipeline,
             write_row: 0,
@@ -258,6 +328,29 @@ impl shader::Primitive for SpectrogramPrimitive {
         if w > need || h > need {
             return;
         }
+        if !pipeline.cmap_uploaded {
+            let lut = &*self.colormap_lut;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &pipeline.cmap_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(lut),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(256 * 4),
+                    rows_per_image: Some(1),
+                },
+                wgpu::Extent3d {
+                    width: 256,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+            );
+            pipeline.cmap_uploaded = true;
+        }
         let cur_w = pipeline.texture.size().width;
         let cur_h = pipeline.texture.size().height;
         if cur_w != w || cur_h != h {
@@ -271,7 +364,7 @@ impl shader::Primitive for SpectrogramPrimitive {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::R32Float,
+                format: wgpu::TextureFormat::R8Unorm,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
@@ -282,18 +375,22 @@ impl shader::Primitive for SpectrogramPrimitive {
                 &pipeline.uniform,
                 &pipeline.texture_view,
                 &pipeline.sampler,
+                &pipeline.cmap_view,
+                &pipeline.cmap_sampler,
             );
             pipeline.write_row = 0;
         }
-        let mut row = vec![0.0f32; w as usize];
+        let mut row_u8 = vec![0u8; w as usize];
         let mut last_y: Option<u32> = None;
         loop {
             let col = { self.pending_spectra.lock().unwrap().pop_front() };
             let Some(col) = col else { break };
-            let n = col.len().min(row.len());
-            row[..n].copy_from_slice(&col[..n]);
-            if n < row.len() {
-                row[n..].fill(0.0);
+            let n = col.len().min(row_u8.len());
+            for (dst, &src) in row_u8[..n].iter_mut().zip(&col[..n]) {
+                *dst = (src.clamp(0.0, 1.0) * 255.0) as u8;
+            }
+            for dst in row_u8[n..].iter_mut() {
+                *dst = 0;
             }
             let y = pipeline.write_row % h;
             queue.write_texture(
@@ -303,10 +400,10 @@ impl shader::Primitive for SpectrogramPrimitive {
                     origin: wgpu::Origin3d { x: 0, y, z: 0 },
                     aspect: wgpu::TextureAspect::All,
                 },
-                bytemuck::cast_slice(&row),
+                &row_u8,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(4 * w),
+                    bytes_per_row: Some(w),
                     rows_per_image: Some(1),
                 },
                 wgpu::Extent3d {
@@ -325,6 +422,10 @@ impl shader::Primitive for SpectrogramPrimitive {
                 tex_w: w as f32,
                 tex_h: h as f32,
                 mode: if self.dev.scroll_right_to_left { 0 } else { 1 },
+                contrast: self.contrast,
+                saturation: self.saturation,
+                _pad0: 0.0,
+                _pad1: 0.0,
             };
             queue.write_buffer(&pipeline.uniform, 0, bytemuck::bytes_of(&u));
         }
@@ -361,6 +462,9 @@ impl<Message: 'static> shader::Program<Message> for SpectrogramProgram {
             bins: self.bins,
             history,
             dev: self.dev,
+            colormap_lut: self.colormap_lut.clone(),
+            contrast: self.contrast,
+            saturation: self.saturation,
         }
     }
     fn mouse_interaction(

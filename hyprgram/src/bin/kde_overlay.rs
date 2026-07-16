@@ -3,7 +3,7 @@ mod inner {
     use clap::Parser;
     use hyprgram::dev::{SpectrogramDevConfig, effective_spectrogram_history};
     use hyprgram::spectrogram::SpectrogramProgram;
-    use hyprgram_core::{profiles, SampleRing, SpectrumProcessor};
+    use hyprgram_core::{default_colormap, profiles, SampleRing, SpectrumProcessor};
     use iced::widget::container;
     use iced::widget::shader::Shader;
     use iced::{Color, Element, Length, Subscription, Task};
@@ -135,7 +135,7 @@ mod inner {
         let img = profile.image.as_ref();
         let width = args.width.unwrap_or(img.map_or(0, |i| i.width));
         let height = args.height.unwrap_or(img.map_or(200, |i| i.height));
-        let rtl = if args.legacy_vertical_scroll { false } else { img.map_or(true, |i| i.scroll_right_to_left) };
+        let rtl = if args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
 
         let history = effective_spectrogram_history(args.history, width.max(1), height, rtl);
         let backlog_cap = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
@@ -170,6 +170,9 @@ mod inner {
             bins: bins as u32,
             min_history: history,
             dev: SpectrogramDevConfig { scroll_right_to_left: rtl },
+            colormap_lut: Arc::new(default_colormap().build_lut_rgba(256)),
+            contrast: 1.0,
+            saturation: 1.0,
         };
 
         let anchor = parse_anchor(&args.anchor);

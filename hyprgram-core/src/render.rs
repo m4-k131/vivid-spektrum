@@ -44,7 +44,7 @@ pub fn samples_to_spectrogram(
     }
     let num_windows = (n - w) / h + 1;
     let num_threads = rayon::current_num_threads().max(1);
-    let windows_per_chunk = (num_windows + num_threads - 1) / num_threads;
+    let windows_per_chunk = num_windows.div_ceil(num_threads);
     let chunks: Vec<(usize, usize)> = (0..num_windows)
         .step_by(windows_per_chunk)
         .map(|start| {

@@ -5,6 +5,9 @@ pub struct Colormap {
 }
 
 impl Colormap {
+    pub fn new(name: impl Into<String>, stops: Vec<(f32, f32, f32, f32)>) -> Self {
+        Self { name: name.into(), stops }
+    }
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -14,6 +17,16 @@ impl Colormap {
         for i in 0..n {
             let t = i as f32 / (n - 1) as f32;
             lut.push(self.sample(t));
+        }
+        lut
+    }
+    pub fn build_lut_rgba(&self, size: usize) -> Vec<[u8; 4]> {
+        let n = size.max(2);
+        let mut lut = Vec::with_capacity(n);
+        for i in 0..n {
+            let t = i as f32 / (n - 1) as f32;
+            let [r, g, b] = self.sample(t);
+            lut.push([r, g, b, 255]);
         }
         lut
     }
@@ -84,6 +97,54 @@ pub fn builtin_colormap_names() -> Vec<&'static str> {
 
 pub fn default_colormap() -> Colormap {
     viridis()
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ColormapFile {
+    name: Option<String>,
+    stops: Vec<ColormapStop>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ColormapStop {
+    position: f32,
+    r: f32,
+    g: f32,
+    b: f32,
+}
+
+pub fn load_colormap_file(path: &std::path::Path) -> Result<Colormap, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("read colormap: {e}"))?;
+    let file: ColormapFile = toml::from_str(&text).map_err(|e| format!("parse colormap: {e}"))?;
+    if file.stops.len() < 2 {
+        return Err("colormap needs at least 2 stops".into());
+    }
+    let name = file.name.unwrap_or_else(|| {
+        path.file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "custom".into())
+    });
+    let stops: Vec<(f32, f32, f32, f32)> = file
+        .stops
+        .iter()
+        .map(|s| (s.position, s.r, s.g, s.b))
+        .collect();
+    Ok(Colormap::new(name, stops))
+}
+
+pub fn resolve_colormap(name_or_path: &str) -> Result<Colormap, String> {
+    if let Some(cm) = builtin_colormap(name_or_path) {
+        return Ok(cm);
+    }
+    let path = std::path::Path::new(name_or_path);
+    if path.exists() {
+        return load_colormap_file(path);
+    }
+    Err(format!(
+        "unknown colormap '{}'. Available: {:?}, or pass a .toml file path",
+        name_or_path,
+        builtin_colormap_names()
+    ))
 }
 
 fn viridis() -> Colormap {

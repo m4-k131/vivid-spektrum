@@ -213,7 +213,7 @@ fn decode_mono_f32(path: &Path) -> Result<(Vec<f32>, u32)> {
             Ok(audio) => {
                 push_mono_samples(audio, &mut samples);
                 packet_count += 1;
-                if packet_count % 500 == 0 {
+                if packet_count.is_multiple_of(500) {
                     let elapsed = decode_start.elapsed();
                     let secs = samples.len() as f64 / sample_rate as f64;
                     eprintln!("       {} packets, {:.1}s audio decoded ({:.1}s elapsed)", packet_count, secs, elapsed.as_secs_f64());

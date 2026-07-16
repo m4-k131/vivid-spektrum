@@ -1,10 +1,10 @@
 use crate::{CoreError, SpectrumConfig, SpectrogramImageConfig};
 use std::path::Path;
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Profile {
     pub spectrum: SpectrumConfig,
-    #[serde(default)]
     pub image: Option<ProfileImage>,
 }
 
@@ -32,7 +32,7 @@ impl Profile {
             spectrum: self.spectrum.clone(),
             width: img.map_or(800, |i| i.width),
             height: img.map_or(200, |i| i.height),
-            scroll_right_to_left: img.map_or(true, |i| i.scroll_right_to_left),
+            scroll_right_to_left: img.is_none_or(|i| i.scroll_right_to_left),
             colormap: img.map_or_else(|| "viridis".into(), |i| i.colormap.clone()),
         }
     }

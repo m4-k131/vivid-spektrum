@@ -94,11 +94,11 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 3. **Phase 3 -- Realtime integration** (complete)
    Lock-free **ring buffer** (PipeWire -> DSP decoupled); **sample counter** + pipeline **latency logging**; **centered vs causal** reaction alignment (`--centered`); formalized **analysis vs render** rates (hop=1024 -> ~47 cols/sec, render at 60fps); **dynamic window resize** (texture tracks widget bounds); **frequency axis flip** (low freq at bottom); **freq_scale_exp** for log-scale warping; KDE/Wayland **window flags** and **layer-shell overlay**.
 
-4. **Phase 4 -- GPU / visualization polish** (next)
-   Shader **interpolation** (bilinear); GPU **colormap** as 1D LUT texture (currently viridis polynomial in WGSL -- 7 CPU colormaps not available in live shader); optional **post-process** pass (blur, glow).
+4. **Phase 4 -- GPU / visualization polish** (complete)
+   Shader **bilinear interpolation** (R8Unorm filterable texture); GPU **colormap** as 256x1 RGBA8 LUT texture (all 15 builtins + custom TOML colormaps); **contrast** and **saturation** post-processing in fragment shader; `--contrast` / `--saturation` CLI flags.
 
 5. **Phase 5 -- Product / engineering** (complete)
-   **Profiles** and **preset files** (TOML); builtin presets (laptop, default, foobar-like); CLI overrides for all DSP parameters; `kde_overlay` binary; window management flags.
+   **Profiles** and **preset files** (TOML); builtin presets (laptop, default, foobar-like); CLI overrides for all DSP parameters; `kde_overlay` binary; window management flags; `default_config.toml` reference config with full documentation; `presets/` directory with 8 ready-to-use configs (default, laptop, foobar-like, music-production, voice, bass-heavy, cqt-musical, minimal-dark, ultra-responsive).
 
 6. **Phase 6 -- Research / extras**
    SWIFT/IIR analog modes; Brown-Puckette CQT mapping; mel/bark filter banks; heavy visual post-processing; golden PNG regression captures + CI.

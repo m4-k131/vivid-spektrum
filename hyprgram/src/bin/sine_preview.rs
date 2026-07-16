@@ -13,7 +13,8 @@ use hyprgram::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 use hyprgram::spectrogram::SpectrogramProgram;
 #[cfg(target_os = "linux")]
 use hyprgram_core::{
-    SpectrumConfig, SpectrumProcessor, DEFAULT_FFT_HOP_SAMPLES, DEFAULT_FFT_WINDOW_SAMPLES,
+    default_colormap, SpectrumConfig, SpectrumProcessor, DEFAULT_FFT_HOP_SAMPLES,
+    DEFAULT_FFT_WINDOW_SAMPLES,
 };
 #[cfg(target_os = "linux")]
 use iced::widget::container;
@@ -81,11 +82,13 @@ impl Preview {
     fn new(args: PreviewArgs) -> Self {
         let rtl = !args.legacy_vertical_scroll;
         let history = effective_spectrogram_history(args.history, args.width, args.height, rtl);
-        let mut cfg = SpectrumConfig::default();
-        cfg.window_size = args.window;
-        cfg.hop_size = args.hop;
-        cfg.sample_rate = args.sample_rate;
-        cfg.log_bins = args.log_bins;
+        let cfg = SpectrumConfig {
+            window_size: args.window,
+            hop_size: args.hop,
+            sample_rate: args.sample_rate,
+            log_bins: args.log_bins,
+            ..Default::default()
+        };
         let proc = SpectrumProcessor::new(cfg).expect("spectrum processor");
         Self {
             proc,
@@ -100,6 +103,9 @@ impl Preview {
                 dev: SpectrogramDevConfig {
                     scroll_right_to_left: rtl,
                 },
+                colormap_lut: Arc::new(default_colormap().build_lut_rgba(256)),
+                contrast: 1.0,
+                saturation: 1.0,
             },
             scratch: Vec::with_capacity(args.hop.max(1)),
         }
