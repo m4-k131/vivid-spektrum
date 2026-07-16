@@ -68,6 +68,10 @@ pub struct Args {
     pub transparent: bool,
     #[arg(long, help = "Window position as X,Y (e.g. 100,50)")]
     pub position: Option<String>,
+    #[arg(long, help = "Override: frequency scale exponent (<1 compresses lows, >1 stretches lows)")]
+    pub freq_scale_exp: Option<f32>,
+    #[arg(long, help = "Centered analysis window (adds half-window latency for better frequency accuracy)")]
+    pub centered: bool,
 }
 
 // Phase 4 manual verification (Linux/Wayland):

@@ -69,6 +69,8 @@ impl App {
             };
         }
         if let Some(v) = args.cqt_bpo { spectrum.cqt_bins_per_octave = v; }
+        if let Some(v) = args.freq_scale_exp { spectrum.freq_scale_exp = v; }
+        if args.centered { spectrum.centered = true; }
         let _colormap_name = args.colormap.as_deref().unwrap_or("viridis");
         let img = profile.image.as_ref();
         let width = args.width.unwrap_or(img.map_or(800, |i| i.width));

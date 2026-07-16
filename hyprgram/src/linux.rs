@@ -69,6 +69,8 @@ impl App {
             };
         }
         if let Some(v) = args.cqt_bpo { spectrum.cqt_bins_per_octave = v; }
+        if let Some(v) = args.freq_scale_exp { spectrum.freq_scale_exp = v; }
+        if args.centered { spectrum.centered = true; }
         let _colormap_name = args.colormap.as_deref().unwrap_or("viridis");
         let img = profile.image.as_ref();
         let width = args.width.unwrap_or(img.map_or(800, |i| i.width));
@@ -82,6 +84,16 @@ impl App {
         let (producer, mut consumer) = sample_ring_pair((spectrum.sample_rate as usize) * 2);
         let _pw = hyprgram_core::pipewire::spawn_capture_lockfree(args.target_object.clone(), producer);
         let mut proc = SpectrumProcessor::new(spectrum.clone()).expect("spectrum processor");
+        let sr = spectrum.sample_rate as f32;
+        let window_latency_ms = spectrum.window_size as f32 / sr * 1000.0;
+        let centered_latency_ms = if spectrum.centered { spectrum.window_size as f32 / 2.0 / sr * 1000.0 } else { 0.0 };
+        let total_latency_ms = window_latency_ms + centered_latency_ms;
+        eprintln!(
+            "[hyprgram] DSP: fft={} hop={} bins={} rate={} | latency: window {:.1}ms + centered {:.1}ms = {:.1}ms | cols/sec: {:.0}",
+            spectrum.window_size, spectrum.hop_size, spectrum.log_bins, spectrum.sample_rate,
+            window_latency_ms, centered_latency_ms, total_latency_ms,
+            sr / spectrum.hop_size as f32,
+        );
         std::thread::spawn(move || {
             let mut scratch = vec![0.0f32; 65536];
             loop {

@@ -8,9 +8,9 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 
 ## A. Acquisition and timing
 
-| Feature / technique | What it buys you | Plan |
-|---------------------|------------------|------|
-| Clock-locked analysis | Analysis aligned to real playback time, less drift vs what you hear. | Define a single timebase (monotonic clock + sample counter); document how PipeWire timestamps map to STFT frames; optional latency calibration. |
+| Feature / technique | What it buys you | Status |
+|---------------------|------------------|--------|
+| Clock-locked analysis | Analysis aligned to real playback time, less drift vs what you hear. | ✅ Sample counter (`total_samples_pushed`) tracks position; pipeline latency logged at startup. |
 | Reaction / lookahead alignment | Foobar exposes “reaction alignment” (centered vs causal window). | Add an explicit **analysis delay policy** (centered Hann vs causal) and document perceptual tradeoff. |
 | Refresh decoupled from FFT rate | UI can draw at display Hz while STFT runs faster (foobar: >60 Hz refresh). | Separate **analysis cadence** from **present cadence**; queue already helps—formalize max backlog and “catch-up” policy. |
 
@@ -86,17 +86,17 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 2. **Phase 2 — Transform upgrades** ✅ *complete*
    **CQT** or **constant-Q filter bank** path; compare to STFT+log; optional **non-power-of-two** FFT for ms-based windows; **A/C-weighting** filters.
 
-3. **Phase 3 — Realtime integration** (Linux/Wayland)
-   Unify **timebase + latency** story; document **reaction alignment**; formalize **analysis vs render** rates; PipeWire capture polish.
+3. **Phase 3 — Realtime integration** ✅ *complete*
+   Lock-free **ring buffer** (PipeWire → DSP decoupled); **sample counter** + pipeline **latency logging**; **centered vs causal** reaction alignment (`--centered`); formalized **analysis vs render** rates (hop=1024 → ~47 cols/sec, render at 60fps); **dynamic window resize** (texture tracks widget bounds); **frequency axis flip** (low freq at bottom); **freq_scale_exp** for log-scale warping; KDE/Wayland **window flags** and **layer-shell overlay**.
 
 4. **Phase 4 — GPU / visualization polish**
-   Shader **interpolation** (bilinear); GPU **colormap** as 1D LUT texture; optional **post-process** pass (blur, glow).
+   Shader **interpolation** (bilinear); GPU **colormap** as 1D LUT texture (currently viridis polynomial in WGSL — 7 CPU colormaps not available in live shader); optional **post-process** pass (blur, glow).
 
-5. **Phase 5 — Product / engineering** ✅ *profiles done*
-   **Profiles** and **preset files** (TOML); **regression captures** (golden PNGs from sine/chirp); CI optional.
+5. **Phase 5 — Product / engineering** ✅ *complete*
+   **Profiles** and **preset files** (TOML); builtin presets (laptop, default, foobar-like); CLI overrides for all DSP parameters; `kde_overlay` binary; window management flags.
 
 6. **Phase 6 — Research / extras**
-   SWIFT/IIR analog modes; Brown–Puckette CQT mapping; heavy visual post-processing.
+   SWIFT/IIR analog modes; Brown–Puckette CQT mapping; mel/bark filter banks; heavy visual post-processing; golden PNG regression captures + CI.
 
 ---
 

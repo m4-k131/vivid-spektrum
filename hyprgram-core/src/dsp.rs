@@ -111,6 +111,8 @@ pub struct SpectrumConfig {
     pub cqt_bins_per_octave: u32,
     #[serde(default = "default_freq_scale_exp")]
     pub freq_scale_exp: f32,
+    #[serde(default)]
+    pub centered: bool,
 }
 
 fn default_gamma() -> f32 { 1.0 }
@@ -138,6 +140,7 @@ impl Default for SpectrumConfig {
             transform: Transform::Stft,
             cqt_bins_per_octave: 12,
             freq_scale_exp: 0.5,
+            centered: false,
         }
     }
 }
@@ -155,6 +158,8 @@ pub struct SpectrumProcessor {
     pending: Vec<f32>,
     weighting_weights: Vec<f32>,
     cqt_weights: Vec<Vec<(usize, f32)>>,
+    total_samples_pushed: u64,
+    centered_prefill: usize,
 }
 
 impl SpectrumProcessor {
@@ -173,6 +178,7 @@ impl SpectrumProcessor {
         let weighting_weights = build_weighting_weights(&cfg);
         let cqt_weights = build_cqt_weights(&cfg);
         let pending_cap = cfg.window_size * 2;
+        let centered_prefill = if cfg.centered { cfg.window_size / 2 } else { 0 };
         Ok(Self {
             cfg,
             r2c,
@@ -186,6 +192,8 @@ impl SpectrumProcessor {
             pending: Vec::with_capacity(pending_cap),
             weighting_weights,
             cqt_weights,
+            total_samples_pushed: 0,
+            centered_prefill,
         })
     }
     pub fn set_sample_rate(&mut self, sr: u32) {
@@ -198,13 +206,18 @@ impl SpectrumProcessor {
             self.cfg.log_bins
         }
     }
+    pub fn total_samples_pushed(&self) -> u64 {
+        self.total_samples_pushed
+    }
     pub fn push_samples(&mut self, incoming: &[f32], out_columns: &mut Vec<Vec<f32>>) {
         self.pending.extend_from_slice(incoming);
+        self.total_samples_pushed += incoming.len() as u64;
         let w = self.cfg.window_size;
         let h = self.cfg.hop_size;
         let n_bins = self.log_bins();
         out_columns.clear();
-        while self.pending.len() >= w {
+        let min_pending = w + self.centered_prefill;
+        while self.pending.len() >= min_pending {
             for i in 0..w {
                 self.work_input[i] = self.pending[i] * self.window[i];
             }
