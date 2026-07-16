@@ -54,6 +54,10 @@ impl App {
                 other => panic!("unknown band aggregation '{}'", other),
             };
         }
+        if let Some(v) = args.f_min { spectrum.f_min_hz = v; }
+        if let Some(v) = args.f_max { spectrum.f_max_hz = v; }
+        if let Some(v) = args.db_floor { spectrum.db_floor = v; }
+        if let Some(v) = args.db_ceil { spectrum.db_ceil = v; }
         if let Some(v) = args.smoothing { spectrum.freq_smoothing_sigma = v; }
         if let Some(v) = args.gamma { spectrum.amplitude_gamma = v; }
         if let Some(v) = args.temporal_alpha { spectrum.temporal_alpha = v; }

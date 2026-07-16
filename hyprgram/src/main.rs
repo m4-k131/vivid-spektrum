@@ -32,6 +32,14 @@ pub struct Args {
     pub window_fn: Option<String>,
     #[arg(long = "band-agg", help = "Override: band aggregation (nearest, triangular)")]
     pub band_agg: Option<String>,
+    #[arg(long = "f-min", help = "Override: minimum frequency in Hz (default 20)")]
+    pub f_min: Option<f32>,
+    #[arg(long = "f-max", help = "Override: maximum frequency in Hz (default 20000)")]
+    pub f_max: Option<f32>,
+    #[arg(long = "db-floor", help = "Override: dB floor — magnitudes below mapped to 0 (default -90)")]
+    pub db_floor: Option<f32>,
+    #[arg(long = "db-ceil", help = "Override: dB ceiling — magnitudes above mapped to 1 (default 0)")]
+    pub db_ceil: Option<f32>,
     #[arg(long = "smoothing", help = "Override: Gaussian frequency smoothing sigma (0=off, try 0.5-2.0)")]
     pub smoothing: Option<f32>,
     #[arg(long = "gamma", help = "Override: amplitude gamma (<1 brightens, >1 darkens)")]

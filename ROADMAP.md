@@ -101,7 +101,7 @@ This document lists **features and techniques** (not magic numbers) toward a **f
    **Profiles** and **preset files** (TOML); builtin presets (laptop, default, foobar-like); CLI overrides for all DSP parameters; `kde_overlay` binary; window management flags; `default_config.toml` reference config with full documentation; `presets/` directory with 8 ready-to-use configs (default, laptop, foobar-like, music-production, voice, bass-heavy, cqt-musical, minimal-dark, ultra-responsive).
 
 6. **Phase 6 -- Research / extras**
-   SWIFT/IIR analog modes; Brown-Puckette CQT mapping; mel/bark filter banks; heavy visual post-processing; golden PNG regression captures + CI.
+   **AGC** (automatic gain control — adaptive peak tracking + normalization); SWIFT/IIR analog modes; Brown-Puckette CQT mapping; mel/bark filter banks; heavy visual post-processing; golden PNG regression captures + CI.
 
 ---
 
