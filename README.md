@@ -65,6 +65,34 @@ cargo run --bin hyprgram -- --list-colormaps  # see all available
 
 Colormaps are uploaded as GPU LUT textures — zero CPU cost at runtime.
 
+## Frequency overlays
+
+Draw horizontal reference lines (staff lines, tuning notes, etc.) from TOML files:
+
+```bash
+cargo run --bin hyprgram -- --overlay treble-bass
+cargo run --bin hyprgram -- --overlay guitar-standard
+cargo run --bin hyprgram -- --overlay a440
+cargo run --bin hyprgram -- --list-overlays  # see all available
+```
+
+**Builtin**: treble, treble-bass, guitar-standard, a440
+
+Custom overlay format (`overlays/my-scale.toml`):
+
+```toml
+name = "my-scale"
+color = [255, 200, 100]   # RGB line color
+opacity = 0.7             # blend strength (0.0–1.0)
+thickness = 0.004         # fraction of screen height
+
+[[lines]]
+freq = 440.0
+label = "A4"
+```
+
+Drop any `.toml` in `overlays/` or pass a full path with `--overlay path/to/file.toml`.
+
 ## GPU post-processing
 
 Contrast and saturation are applied in the fragment shader:
@@ -105,6 +133,8 @@ cargo run --bin hyprgram -- --contrast 1.3 --saturation 1.2
 | `--always-on-bottom` | off | Keep below (desktop widget) |
 | `--transparent` | off | Transparent background |
 | `--position` | — | Window position as X,Y |
+| `--overlay` | — | Frequency overlay name or .toml path |
+| `--debug-profile` | off | Print DSP/GPU performance stats every second |
 
 ## How it works
 
@@ -133,4 +163,4 @@ cargo test --workspace   # 74 tests
 
 ## Roadmap
 
-See `ROADMAP.md`. Phases 1–5 complete. Phase 6 (research/extras) remains for future exploration.
+See `ROADMAP.md`. Phases 1–5 complete. Phase 6 (overlay/annotation) and Phase 7 (research/extras) remain for future exploration.
