@@ -18,4 +18,4 @@ pub use dsp::{
 };
 pub use error::CoreError;
 pub use render::{render_spectrogram_png, render_spectrogram_png_with_grid, samples_to_spectrogram, SpectrogramImageConfig};
-pub use ring::SampleRing;
+pub use ring::{SampleRing, SampleRingProducer, SampleRingConsumer, sample_ring_pair};

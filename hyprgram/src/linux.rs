@@ -1,7 +1,7 @@
 use crate::Args;
 use hyprgram::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 use hyprgram::spectrogram::SpectrogramProgram;
-use hyprgram_core::{profiles, SampleRing, SpectrumProcessor};
+use hyprgram_core::{profiles, sample_ring_pair, SpectrumProcessor};
 use iced::widget::container;
 use iced::widget::shader::Shader;
 use iced::{Element, Length, Size, Subscription, Task};
@@ -79,15 +79,15 @@ impl App {
         let backlog_cap = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
         let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
-        let ring = SampleRing::new((spectrum.sample_rate as usize) * 2);
-        let _pw = hyprgram_core::pipewire::spawn_capture(args.target_object.clone(), ring.clone());
+        let (producer, mut consumer) = sample_ring_pair((spectrum.sample_rate as usize) * 2);
+        let _pw = hyprgram_core::pipewire::spawn_capture_lockfree(args.target_object.clone(), producer);
         let mut proc = SpectrumProcessor::new(spectrum.clone()).expect("spectrum processor");
         std::thread::spawn(move || {
             let mut scratch = vec![0.0f32; 65536];
             loop {
-                let n = ring.pop_into(&mut scratch);
+                let n = consumer.pop_into(&mut scratch);
                 if n == 0 {
-                    std::thread::sleep(Duration::from_millis(2));
+                    std::thread::sleep(Duration::from_micros(500));
                     continue;
                 }
                 let mut cols = Vec::new();
@@ -105,7 +105,7 @@ impl App {
             prog: SpectrogramProgram {
                 pending_spectra,
                 bins: spectrum.log_bins as u32,
-                history,
+                min_history: history,
                 dev: SpectrogramDevConfig {
                     scroll_right_to_left: rtl,
                 },

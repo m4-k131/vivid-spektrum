@@ -47,10 +47,10 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     var tx: f32;
     var ty: f32;
     if (u.mode == 0u) {
-        tx = in.uv.y;
+        tx = 1.0 - in.uv.y;
         ty = fract(in.uv.x + u.scroll);
     } else {
-        tx = in.uv.x;
+        tx = 1.0 - in.uv.x;
         ty = fract(in.uv.y + u.scroll);
     }
     let mag = textureSample(tex, samp, vec2(tx, ty)).r;
@@ -73,7 +73,7 @@ pub struct SpectrogramProgram {
     /// One `Vec<f32>` spectrum per STFT hop; drained in `prepare` (multiple rows per frame possible).
     pub pending_spectra: Arc<Mutex<VecDeque<Vec<f32>>>>,
     pub bins: u32,
-    pub history: u32,
+    pub min_history: u32,
     pub dev: SpectrogramDevConfig,
 }
 
@@ -348,12 +348,18 @@ impl<Message: 'static> shader::Program<Message> for SpectrogramProgram {
         &self,
         _state: &Self::State,
         _cursor: Cursor,
-        _bounds: Rectangle,
+        bounds: Rectangle,
     ) -> Self::Primitive {
+        let time_px = if self.dev.scroll_right_to_left {
+            bounds.width as u32
+        } else {
+            bounds.height as u32
+        };
+        let history = time_px.max(self.min_history).max(1);
         SpectrogramPrimitive {
             pending_spectra: self.pending_spectra.clone(),
             bins: self.bins,
-            history: self.history,
+            history,
             dev: self.dev,
         }
     }

@@ -105,7 +105,7 @@ impl App {
             prog: SpectrogramProgram {
                 pending_spectra,
                 bins: spectrum.log_bins as u32,
-                history,
+                min_history: history,
                 dev: SpectrogramDevConfig {
                     scroll_right_to_left: rtl,
                 },

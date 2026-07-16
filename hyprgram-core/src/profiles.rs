@@ -66,7 +66,12 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
                 window_size: 32768,
                 hop_size: 128,
                 sample_rate: 48000,
-                log_bins: 512,
+                log_bins: 2048,
+                db_floor: -100.0,
+                freq_smoothing_sigma: 1.5,
+                amplitude_gamma: 0.4,
+                temporal_alpha: 0.4,
+                peak_hold_decay: 0.95,
                 ..Default::default()
             },
             image: None,
@@ -107,7 +112,7 @@ mod tests {
     fn foobar_like_profile_has_large_window() {
         let p = builtin_profile("foobar-like").unwrap();
         assert_eq!(p.spectrum.window_size, 32768);
-        assert_eq!(p.spectrum.log_bins, 512);
+        assert_eq!(p.spectrum.log_bins, 2048);
     }
 
     #[test]
@@ -115,7 +120,7 @@ mod tests {
         let p = builtin_profile("default").unwrap();
         let default_cfg = SpectrumConfig::default();
         assert_eq!(p.spectrum.window_size, default_cfg.window_size);
-        assert_eq!(p.spectrum.log_bins, default_cfg.log_bins);
+        assert_eq!(p.spectrum.log_bins, 1024);
     }
 
     #[test]

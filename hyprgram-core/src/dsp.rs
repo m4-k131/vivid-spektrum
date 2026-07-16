@@ -5,9 +5,9 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 
 /// Default real FFT length: Hann STFT window size in samples. Frequency bin spacing ≈ `sample_rate / window_size`.
-pub const DEFAULT_FFT_WINDOW_SAMPLES: usize = 20480;
-/// Default hop between STFT frames (samples). ~5.3 ms @ 48 kHz — coarse enough for ~1/128-type timing vs CPU; raise `fft` / lower hop for heavier overlap.
-pub const DEFAULT_FFT_HOP_SAMPLES: usize = 256;
+pub const DEFAULT_FFT_WINDOW_SAMPLES: usize = 8192;
+/// Default hop between STFT frames (samples). ~21 ms @ 48 kHz → ~47 columns/sec (~73 s visible at 3440 px); lower for more overlap at higher CPU cost.
+pub const DEFAULT_FFT_HOP_SAMPLES: usize = 1024;
 
 /// STFT hop must satisfy `1 <= hop <= window_size`. `hop == 0` is treated as “use half window” (50% overlap). Larger values are clamped to `window_size`.
 pub fn normalize_hop_size(window_size: usize, hop: usize) -> usize {
@@ -109,10 +109,13 @@ pub struct SpectrumConfig {
     pub transform: Transform,
     #[serde(default = "default_cqt_bpo")]
     pub cqt_bins_per_octave: u32,
+    #[serde(default = "default_freq_scale_exp")]
+    pub freq_scale_exp: f32,
 }
 
 fn default_gamma() -> f32 { 1.0 }
 fn default_cqt_bpo() -> u32 { 12 }
+fn default_freq_scale_exp() -> f32 { 0.5 }
 
 impl Default for SpectrumConfig {
     fn default() -> Self {
@@ -120,20 +123,21 @@ impl Default for SpectrumConfig {
             window_size: DEFAULT_FFT_WINDOW_SAMPLES,
             hop_size: DEFAULT_FFT_HOP_SAMPLES,
             sample_rate: 48000,
-            log_bins: 256,
+            log_bins: 1024,
             f_min_hz: 20.0,
             f_max_hz: 20000.0,
-            db_floor: -80.0,
+            db_floor: -90.0,
             db_ceil: 0.0,
-            window_fn: WindowFunction::Hann,
-            band_aggregation: BandAggregation::Nearest,
-            freq_smoothing_sigma: 0.0,
-            amplitude_gamma: 1.0,
-            temporal_alpha: 0.0,
-            peak_hold_decay: 0.0,
+            window_fn: WindowFunction::BlackmanHarris,
+            band_aggregation: BandAggregation::Triangular,
+            freq_smoothing_sigma: 1.0,
+            amplitude_gamma: 0.5,
+            temporal_alpha: 0.3,
+            peak_hold_decay: 0.92,
             weighting: Weighting::None,
             transform: Transform::Stft,
             cqt_bins_per_octave: 12,
+            freq_scale_exp: 0.5,
         }
     }
 }
@@ -241,8 +245,9 @@ impl SpectrumProcessor {
         }
         match self.cfg.band_aggregation {
             BandAggregation::Nearest => {
+                let exp = self.cfg.freq_scale_exp.max(0.1);
                 for i in 0..col.len() {
-                    let t = i as f32 / (col.len().saturating_sub(1).max(1) as f32);
+                    let t = (i as f32 / (col.len().saturating_sub(1).max(1) as f32)).powf(exp);
                     let f = f_min * (f_max / f_min).powf(t);
                     let bin_f = f * nfft as f32 / sr;
                     let k = (bin_f.round() as usize).clamp(1, kmax);
@@ -325,13 +330,14 @@ fn build_band_weights(cfg: &SpectrumConfig) -> Vec<Vec<(usize, f32)>> {
     let f_max = cfg.f_max_hz.min(nyq).max(cfg.f_min_hz + 1.0);
     let f_min = cfg.f_min_hz.max(1.0);
     let kmax = (nfft / 2).max(1);
+    let exp = cfg.freq_scale_exp.max(0.1);
     let mut weights = Vec::with_capacity(n_bins);
     for i in 0..n_bins {
-        let t = i as f32 / (n_bins.saturating_sub(1).max(1) as f32);
+        let t = (i as f32 / (n_bins.saturating_sub(1).max(1) as f32)).powf(exp);
         let fc = f_min * (f_max / f_min).powf(t);
-        let t_prev = if i > 0 { (i - 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32) } else { 0.0 };
+        let t_prev = if i > 0 { ((i - 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32)).powf(exp) } else { 0.0 };
         let f_lo = f_min * (f_max / f_min).powf(t_prev);
-        let t_next = if i + 1 < n_bins { (i + 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32) } else { 1.0 };
+        let t_next = if i + 1 < n_bins { ((i + 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32)).powf(exp) } else { 1.0 };
         let f_hi = f_min * (f_max / f_min).powf(t_next);
         let k_lo = ((f_lo * nfft as f32 / sr).floor() as usize).clamp(1, kmax);
         let k_hi = ((f_hi * nfft as f32 / sr).ceil() as usize).clamp(1, kmax);
@@ -534,7 +540,7 @@ mod tests {
     #[test]
     fn spectrum_processor_creates_with_defaults() {
         let proc = SpectrumProcessor::new(SpectrumConfig::default()).unwrap();
-        assert_eq!(proc.log_bins(), 256);
+        assert_eq!(proc.log_bins(), 1024);
     }
 
     #[test]

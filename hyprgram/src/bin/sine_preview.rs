@@ -96,7 +96,7 @@ impl Preview {
             prog: SpectrogramProgram {
                 pending_spectra: Arc::new(Mutex::new(VecDeque::new())),
                 bins: args.log_bins as u32,
-                history,
+                min_history: history,
                 dev: SpectrogramDevConfig {
                     scroll_right_to_left: rtl,
                 },
