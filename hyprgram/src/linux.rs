@@ -5,17 +5,22 @@ use hyprgram_core::{profiles, resolve_colormap, sample_ring_pair, SpectrumProces
 use iced::widget::container;
 use iced::widget::shader::Shader;
 use iced::{Element, Length, Size, Subscription, Task};
+use iced::mouse;
+use iced::event::Event;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 enum Message {
     Tick,
+    WindowEvent(Event),
 }
 
 pub struct App {
     pub prog: SpectrogramProgram,
+    fullscreen: bool,
+    last_click: Option<Instant>,
 }
 
 impl App {
@@ -127,13 +132,34 @@ impl App {
                 contrast: args.contrast,
                 saturation: args.saturation,
             },
+            fullscreen: false,
+            last_click: None,
         }
     }
 }
 
-fn update(_app: &mut App, message: Message) -> Task<Message> {
+fn update(app: &mut App, message: Message) -> Task<Message> {
     match message {
         Message::Tick => Task::none(),
+        Message::WindowEvent(Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))) => {
+            let now = Instant::now();
+            if let Some(prev) = app.last_click {
+                if now.duration_since(prev) < Duration::from_millis(400) {
+                    app.fullscreen = !app.fullscreen;
+                    let mode = if app.fullscreen {
+                        iced::window::Mode::Fullscreen
+                    } else {
+                        iced::window::Mode::Windowed
+                    };
+                    app.last_click = None;
+                    return iced::window::latest()
+                        .and_then(move |id| iced::window::set_mode(id, mode));
+                }
+            }
+            app.last_click = Some(now);
+            Task::none()
+        }
+        Message::WindowEvent(_) => Task::none(),
     }
 }
 
@@ -143,7 +169,10 @@ fn view(app: &App) -> Element<'_, Message> {
 }
 
 fn subscription(_app: &App) -> Subscription<Message> {
-    iced::time::every(std::time::Duration::from_millis(16)).map(|_| Message::Tick)
+    Subscription::batch([
+        iced::time::every(Duration::from_millis(16)).map(|_| Message::Tick),
+        iced::event::listen().map(Message::WindowEvent),
+    ])
 }
 
 pub fn run(args: Args) -> anyhow::Result<()> {
