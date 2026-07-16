@@ -1,0 +1,55 @@
+name = "magma"
+
+[[stops]]
+position = 0.000
+r = 0.001
+g = 0.001
+b = 0.014
+
+[[stops]]
+position = 0.125
+r = 0.130
+g = 0.052
+b = 0.218
+
+[[stops]]
+position = 0.250
+r = 0.316
+g = 0.104
+b = 0.334
+
+[[stops]]
+position = 0.375
+r = 0.512
+g = 0.157
+b = 0.340
+
+[[stops]]
+position = 0.500
+r = 0.703
+g = 0.222
+b = 0.259
+
+[[stops]]
+position = 0.625
+r = 0.863
+g = 0.332
+b = 0.163
+
+[[stops]]
+position = 0.750
+r = 0.964
+g = 0.504
+b = 0.107
+
+[[stops]]
+position = 0.875
+r = 0.994
+g = 0.718
+b = 0.281
+
+[[stops]]
+position = 1.000
+r = 0.987
+g = 0.991
+b = 0.650

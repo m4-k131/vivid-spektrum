@@ -1,0 +1,55 @@
+name = "inferno"
+
+[[stops]]
+position = 0.000
+r = 0.001
+g = 0.000
+b = 0.014
+
+[[stops]]
+position = 0.125
+r = 0.106
+g = 0.038
+b = 0.158
+
+[[stops]]
+position = 0.250
+r = 0.289
+g = 0.076
+b = 0.219
+
+[[stops]]
+position = 0.375
+r = 0.492
+g = 0.123
+b = 0.189
+
+[[stops]]
+position = 0.500
+r = 0.685
+g = 0.207
+b = 0.107
+
+[[stops]]
+position = 0.625
+r = 0.851
+g = 0.337
+b = 0.045
+
+[[stops]]
+position = 0.750
+r = 0.962
+g = 0.518
+b = 0.071
+
+[[stops]]
+position = 0.875
+r = 0.988
+g = 0.733
+b = 0.282
+
+[[stops]]
+position = 1.000
+r = 0.988
+g = 0.998
+b = 0.645

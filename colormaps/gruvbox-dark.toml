@@ -1,0 +1,55 @@
+name = "gruvbox-dark"
+
+[[stops]]
+position = 0.000
+r = 0.157
+g = 0.157
+b = 0.157
+
+[[stops]]
+position = 0.125
+r = 0.251
+g = 0.165
+b = 0.118
+
+[[stops]]
+position = 0.250
+r = 0.420
+g = 0.220
+b = 0.055
+
+[[stops]]
+position = 0.375
+r = 0.616
+g = 0.000
+b = 0.024
+
+[[stops]]
+position = 0.500
+r = 0.800
+g = 0.149
+b = 0.020
+
+[[stops]]
+position = 0.625
+r = 0.839
+g = 0.380
+b = 0.055
+
+[[stops]]
+position = 0.750
+r = 0.847
+g = 0.600
+b = 0.129
+
+[[stops]]
+position = 0.875
+r = 0.922
+g = 0.859
+b = 0.698
+
+[[stops]]
+position = 1.000
+r = 0.984
+g = 0.945
+b = 0.867

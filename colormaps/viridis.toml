@@ -1,0 +1,55 @@
+name = "viridis"
+
+[[stops]]
+position = 0.000
+r = 0.267
+g = 0.004
+b = 0.329
+
+[[stops]]
+position = 0.125
+r = 0.282
+g = 0.141
+b = 0.458
+
+[[stops]]
+position = 0.250
+r = 0.229
+g = 0.299
+b = 0.525
+
+[[stops]]
+position = 0.375
+r = 0.127
+g = 0.449
+b = 0.510
+
+[[stops]]
+position = 0.500
+r = 0.057
+g = 0.568
+b = 0.417
+
+[[stops]]
+position = 0.625
+r = 0.170
+g = 0.659
+b = 0.274
+
+[[stops]]
+position = 0.750
+r = 0.370
+g = 0.731
+b = 0.120
+
+[[stops]]
+position = 0.875
+r = 0.678
+g = 0.785
+b = 0.052
+
+[[stops]]
+position = 1.000
+r = 0.993
+g = 0.906
+b = 0.144
