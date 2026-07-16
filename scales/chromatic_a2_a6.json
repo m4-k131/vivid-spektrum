@@ -1,0 +1,40 @@
+{
+  "name": "Chromatic A (2-6)",
+  "source": {
+    "generated": {
+      "root_note": "A",
+      "root_freq": 27.5,
+      "scale_type": "chromatic",
+      "octaves": {
+        "start": 2,
+        "end": 6
+      }
+    }
+  },
+  "styles": {
+    "root": {
+      "color": [
+        255,
+        100,
+        100
+      ],
+      "width": 2
+    },
+    "octave": {
+      "color": [
+        200,
+        200,
+        200
+      ],
+      "width": 1
+    },
+    "default": {
+      "color": [
+        150,
+        150,
+        150
+      ],
+      "width": 1
+    }
+  }
+}

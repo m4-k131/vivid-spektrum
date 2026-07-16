@@ -1,0 +1,22 @@
+name = "treble"
+description = "Treble clef staff lines (E4-F5)"
+
+[[lines]]
+freq = 329.63
+label = "E4"
+
+[[lines]]
+freq = 392.00
+label = "G4"
+
+[[lines]]
+freq = 493.88
+label = "B4"
+
+[[lines]]
+freq = 587.33
+label = "D5"
+
+[[lines]]
+freq = 698.46
+label = "F5"

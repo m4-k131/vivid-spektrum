@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use hyprgram_core::{
-    profiles, render_spectrogram_png, samples_to_spectrogram,
+    freq_grid::ScaleConfig, profiles, render_spectrogram_png_with_grid, samples_to_spectrogram,
 };
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -56,6 +56,8 @@ struct Args {
     height: Option<u32>,
     #[arg(long, help = "Override: render time top-to-bottom instead of left-to-right")]
     legacy_vertical_scroll: bool,
+    #[arg(long, help = "Path to JSON scale config for frequency grid overlay")]
+    scale: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -153,9 +155,16 @@ fn main() -> Result<()> {
     eprintln!("       {} columns in {:.2}s ({:.0} windows/s)", columns.len(), fft_elapsed.as_secs_f64(), columns.len() as f64 / fft_elapsed.as_secs_f64().max(0.001));
     eprintln!();
 
+    let scale = if let Some(path) = &args.scale {
+        eprintln!("       loading scale config: {}", path.display());
+        Some(ScaleConfig::load(path)?)
+    } else {
+        None
+    };
+
     eprintln!("[3/3] Rendering PNG...");
     let render_start = Instant::now();
-    render_spectrogram_png(&columns, &image_config, &args.output)?;
+    render_spectrogram_png_with_grid(&columns, &image_config, &args.output, scale.as_ref())?;
     let render_elapsed = render_start.elapsed();
     eprintln!("       render took {:.2}s", render_elapsed.as_secs_f64());
     eprintln!();
@@ -204,7 +213,7 @@ fn decode_mono_f32(path: &Path) -> Result<(Vec<f32>, u32)> {
             Ok(audio) => {
                 push_mono_samples(audio, &mut samples);
                 packet_count += 1;
-                if packet_count % 500 == 0 {
+                if packet_count.is_multiple_of(500) {
                     let elapsed = decode_start.elapsed();
                     let secs = samples.len() as f64 / sample_rate as f64;
                     eprintln!("       {} packets, {:.1}s audio decoded ({:.1}s elapsed)", packet_count, secs, elapsed.as_secs_f64());

@@ -1,0 +1,185 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# hyprgram configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Usage:
+#   cargo run --bin hyprgram -- --config default_config.toml
+#
+# All values shown below are the defaults. Uncomment and change what you need.
+# CLI flags (e.g. --fft 4096) override values from this file.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+[spectrum]
+
+# ─── FFT / STFT ──────────────────────────────────────────────────────────────
+
+# FFT window size in samples. Larger = better frequency resolution but more
+# latency and CPU. Must be >= 8. Non-power-of-two is supported.
+# At 48 kHz: 8192 samples = 170 ms window.
+# Default: 8192
+# window_size = 8192
+
+# Hop size: how many samples to advance between STFT frames.
+# Smaller = more temporal resolution (more columns/sec) but higher CPU.
+# At 48 kHz with hop=1024: ~47 columns/sec.
+# Default: 1024
+# hop_size = 1024
+
+# Audio sample rate in Hz. Should match your audio device (usually 48000).
+# Default: 48000
+# sample_rate = 48000
+
+# ─── Frequency axis ──────────────────────────────────────────────────────────
+
+# Number of log-spaced frequency bins (vertical pixels in the spectrogram).
+# Higher = finer frequency detail but more CPU per frame.
+# Default: 1024
+# log_bins = 1024
+
+# Minimum displayed frequency in Hz.
+# Default: 20.0
+# f_min_hz = 20.0
+
+# Maximum displayed frequency in Hz (capped at Nyquist).
+# Default: 20000.0
+# f_max_hz = 20000.0
+
+# Frequency scale exponent. Controls how screen space is distributed:
+#   < 1.0 = compresses low frequencies (less screen space for bass)
+#   = 1.0 = pure logarithmic (no warping)
+#   > 1.0 = stretches low frequencies (more screen space for bass)
+# Default: 0.5
+# freq_scale_exp = 0.5
+
+# ─── Window function ─────────────────────────────────────────────────────────
+
+# Windowing function applied before FFT. Reduces spectral leakage.
+# Options: "hann", "hamming", "blackman", "blackman-harris"
+# blackman-harris has the best sidelobe suppression.
+# Default: "blackman-harris"
+# window_fn = "blackman-harris"
+
+# ─── Band aggregation ────────────────────────────────────────────────────────
+
+# How FFT bins are mapped to log-spaced display bins.
+#   "nearest"    = pick single closest FFT bin (fast, sharp but can alias)
+#   "triangular" = weighted triangular filter bank (smooth, accurate)
+# Default: "triangular"
+# band_aggregation = "triangular"
+
+# ─── Frequency smoothing ─────────────────────────────────────────────────────
+
+# Gaussian smoothing sigma across frequency bins (log domain).
+# Reduces "sparkle" / noise between adjacent bins.
+#   0.0 = off (no smoothing)
+#   0.5-2.0 = typical range
+# Default: 1.0
+# freq_smoothing_sigma = 1.0
+
+# ─── Amplitude / dynamics ────────────────────────────────────────────────────
+
+# dB floor: magnitudes below this are mapped to 0 (black).
+# Lower = more dynamic range visible, but noisier.
+# Default: -90.0
+# db_floor = -90.0
+
+# dB ceiling: magnitudes above this are mapped to 1 (brightest).
+# Default: 0.0
+# db_ceil = 0.0
+
+# Amplitude gamma (power curve on the 0..1 magnitude).
+#   < 1.0 = brightens quiet signals (compresses dynamics)
+#   = 1.0 = linear
+#   > 1.0 = darkens quiet signals (expands dynamics)
+# Default: 0.5
+# amplitude_gamma = 0.5
+
+# ─── Temporal smoothing ──────────────────────────────────────────────────────
+
+# Exponential moving average (EMA) between frames.
+# Reduces flicker. 0.0 = off, 0.3-0.7 = typical.
+# Higher = smoother but more "smeared" in time.
+# Default: 0.3
+# temporal_alpha = 0.3
+
+# Peak hold decay per frame. Keeps bright peaks visible longer.
+# 0.0 = off, 0.5-0.95 = typical. Higher = longer peak trails.
+# Default: 0.92
+# peak_hold_decay = 0.92
+
+# ─── Frequency weighting ─────────────────────────────────────────────────────
+
+# Apply IEC 61672 frequency weighting to approximate loudness perception.
+# Options: "none", "a", "c"
+#   "a" = A-weighting (attenuates low and very high frequencies)
+#   "c" = C-weighting (mostly flat, slight LF rolloff)
+# Default: "none"
+# weighting = "none"
+
+# ─── Transform type ──────────────────────────────────────────────────────────
+
+# Which time-frequency transform to use.
+#   "stft" = Short-Time Fourier Transform (standard, fast)
+#   "cqt"  = Constant-Q Transform (log-frequency native, more CPU)
+# Default: "stft"
+# transform = "stft"
+
+# CQT: bins per octave. Only used when transform = "cqt".
+# 12 = semitone resolution, 24 = quarter-tone, 48 = very fine.
+# Default: 12
+# cqt_bins_per_octave = 12
+
+# ─── Analysis alignment ──────────────────────────────────────────────────────
+
+# Centered analysis window. When true, adds half-window latency so the
+# analysis is centered on the current playback position (non-causal).
+# Better frequency accuracy at the cost of ~85 ms extra latency (at 8192/48k).
+# Default: false
+# centered = false
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Display / window settings
+# ═══════════════════════════════════════════════════════════════════════════════
+
+[image]
+
+# Window width in pixels. 0 = stretch to screen (layer-shell mode).
+# Default: 800
+# width = 800
+
+# Window height in pixels.
+# Default: 200
+# height = 200
+
+# Scroll direction.
+#   true  = spectrogram scrolls right-to-left (newest on right edge)
+#   false = spectrogram scrolls top-to-bottom (legacy vertical mode)
+# Default: true
+# scroll_right_to_left = true
+
+# Colormap name or path to a custom .toml colormap file.
+# Builtin options: viridis, inferno, magma, plasma, turbo, grayscale, heat,
+#   gruvbox-dark, gruvbox-dark-5, catppuccin-mocha, catppuccin-mocha-5,
+#   nord, nord-5, tokyo-night, tokyo-night-5
+# Or pass a file path: "my_colormap.toml" (see example_colormap.toml)
+# Default: "viridis"
+# colormap = "viridis"
+
+# ─── GPU post-processing ─────────────────────────────────────────────────────
+
+# Contrast applied on the GPU before colormap lookup.
+# Pivots around 0.5 magnitude.
+#   1.0 = neutral (no change)
+#   > 1.0 = more contrast (darks darker, brights brighter)
+#   < 1.0 = less contrast (washed out)
+# Default: 1.0
+# contrast = 1.0
+
+# Color saturation applied on the GPU after colormap.
+# Uses luminance-preserving mix.
+#   1.0 = neutral (colormap colors as-is)
+#   0.0 = fully desaturated (grayscale)
+#   > 1.0 = oversaturated (vivid colors)
+# Default: 1.0
+# saturation = 1.0

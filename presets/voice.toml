@@ -1,0 +1,27 @@
+# Voice/speech profile — focused on vocal frequency range
+# Narrow band (80 Hz - 8 kHz), high temporal resolution for transients.
+# Good for podcasts, calls, vocal analysis.
+# Usage: cargo run --bin hyprgram -- --config presets/voice.toml
+
+[spectrum]
+window_size = 4096
+hop_size = 256
+sample_rate = 48000
+log_bins = 512
+f_min_hz = 80.0
+f_max_hz = 8000.0
+db_floor = -70.0
+db_ceil = 0.0
+window_fn = "blackman-harris"
+band_aggregation = "triangular"
+freq_smoothing_sigma = 0.5
+amplitude_gamma = 0.55
+temporal_alpha = 0.1
+peak_hold_decay = 0.7
+freq_scale_exp = 0.7
+
+[image]
+width = 800
+height = 200
+scroll_right_to_left = true
+colormap = "turbo"

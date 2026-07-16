@@ -10,9 +10,13 @@ realfft = "3.4"
 rustfft = "6.4"
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 thiserror = "2.0"
 toml = "0.8"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 pipewire = "0.9"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+cpal = "0.15"

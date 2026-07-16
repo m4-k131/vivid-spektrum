@@ -2,6 +2,62 @@ use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use std::sync::{Arc, Mutex};
 
+pub struct SampleRingProducer {
+    prod: HeapProd<f32>,
+}
+
+pub struct SampleRingConsumer {
+    cons: HeapCons<f32>,
+}
+
+unsafe impl Send for SampleRingProducer {}
+unsafe impl Send for SampleRingConsumer {}
+
+pub fn sample_ring_pair(capacity: usize) -> (SampleRingProducer, SampleRingConsumer) {
+    let rb = HeapRb::<f32>::new(capacity);
+    let (p, c) = rb.split();
+    (SampleRingProducer { prod: p }, SampleRingConsumer { cons: c })
+}
+
+impl SampleRingProducer {
+    pub fn push_interleaved(&mut self, samples: &[f32], channels: usize) -> usize {
+        if channels == 0 {
+            return 0;
+        }
+        let mut n = 0usize;
+        if channels == 1 {
+            for &s in samples {
+                if self.prod.try_push(s).is_err() {
+                    break;
+                }
+                n += 1;
+            }
+            return n;
+        }
+        for chunk in samples.chunks(channels) {
+            let mut acc = 0.0f32;
+            for &s in chunk {
+                acc += s;
+            }
+            let m = acc / (channels as f32);
+            if self.prod.try_push(m).is_err() {
+                break;
+            }
+            n += 1;
+        }
+        n
+    }
+}
+
+impl SampleRingConsumer {
+    pub fn pop_into(&mut self, dst: &mut [f32]) -> usize {
+        self.cons.pop_slice(dst)
+    }
+    pub fn available(&self) -> usize {
+        self.cons.occupied_len()
+    }
+}
+
 pub struct SampleRing {
     rb: Arc<Mutex<(HeapProd<f32>, HeapCons<f32>)>>,
 }

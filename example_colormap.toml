@@ -1,0 +1,46 @@
+# Custom colormap for hyprgram
+# Usage: cargo run --bin hyprgram -- --colormap example_colormap.toml
+#
+# Each stop has:
+#   position = 0.0 to 1.0 (where in the magnitude range)
+#   r, g, b  = 0.0 to 1.0 (color components)
+#
+# At least 2 stops required. Colors are linearly interpolated between stops.
+
+name = "cyberpunk"
+
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.05
+
+[[stops]]
+position = 0.2
+r = 0.1
+g = 0.0
+b = 0.3
+
+[[stops]]
+position = 0.4
+r = 0.4
+g = 0.0
+b = 0.6
+
+[[stops]]
+position = 0.6
+r = 0.8
+g = 0.1
+b = 0.5
+
+[[stops]]
+position = 0.8
+r = 1.0
+g = 0.4
+b = 0.2
+
+[[stops]]
+position = 1.0
+r = 1.0
+g = 1.0
+b = 0.8

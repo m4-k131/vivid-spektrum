@@ -1,0 +1,26 @@
+name = "guitar-standard"
+description = "Open strings of a standard-tuned guitar (E2-E4)"
+
+[[lines]]
+freq = 82.41
+label = "E2"
+
+[[lines]]
+freq = 110.00
+label = "A2"
+
+[[lines]]
+freq = 146.83
+label = "D3"
+
+[[lines]]
+freq = 196.00
+label = "G3"
+
+[[lines]]
+freq = 246.94
+label = "B3"
+
+[[lines]]
+freq = 329.63
+label = "E4"

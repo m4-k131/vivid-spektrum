@@ -1,0 +1,29 @@
+# Music production profile — wide frequency range, precise, centered analysis
+# Good for mixing/mastering: centered alignment gives better frequency accuracy,
+# A-weighting shows perceptual loudness, high bins for detail.
+# Usage: cargo run --bin hyprgram -- --config presets/music-production.toml
+
+[spectrum]
+window_size = 16384
+hop_size = 512
+sample_rate = 48000
+log_bins = 1536
+f_min_hz = 20.0
+f_max_hz = 22000.0
+db_floor = -96.0
+db_ceil = 0.0
+window_fn = "blackman-harris"
+band_aggregation = "triangular"
+freq_smoothing_sigma = 0.8
+amplitude_gamma = 0.45
+temporal_alpha = 0.15
+peak_hold_decay = 0.85
+weighting = "a"
+freq_scale_exp = 0.6
+centered = true
+
+[image]
+width = 1000
+height = 300
+scroll_right_to_left = true
+colormap = "magma"

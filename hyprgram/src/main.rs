@@ -3,6 +3,8 @@ use clap::Parser;
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "windows")]
+mod windows;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "hyprgram", about = "PipeWire live spectrogram (Wayland window)")]
@@ -30,6 +32,14 @@ pub struct Args {
     pub window_fn: Option<String>,
     #[arg(long = "band-agg", help = "Override: band aggregation (nearest, triangular)")]
     pub band_agg: Option<String>,
+    #[arg(long = "f-min", help = "Override: minimum frequency in Hz (default 20)")]
+    pub f_min: Option<f32>,
+    #[arg(long = "f-max", help = "Override: maximum frequency in Hz (default 20000)")]
+    pub f_max: Option<f32>,
+    #[arg(long = "db-floor", help = "Override: dB floor — magnitudes below mapped to 0 (default -90)")]
+    pub db_floor: Option<f32>,
+    #[arg(long = "db-ceil", help = "Override: dB ceiling — magnitudes above mapped to 1 (default 0)")]
+    pub db_ceil: Option<f32>,
     #[arg(long = "smoothing", help = "Override: Gaussian frequency smoothing sigma (0=off, try 0.5-2.0)")]
     pub smoothing: Option<f32>,
     #[arg(long = "gamma", help = "Override: amplitude gamma (<1 brightens, >1 darkens)")]
@@ -56,6 +66,34 @@ pub struct Args {
     pub sample_rate: Option<u32>,
     #[arg(long, help = "Scroll time top-to-bottom instead of right-to-left")]
     pub legacy_vertical_scroll: bool,
+    #[arg(long, help = "Remove window title bar and decorations")]
+    pub no_decorations: bool,
+    #[arg(long, help = "Keep window always on top of other windows")]
+    pub always_on_top: bool,
+    #[arg(long, help = "Keep window always below other windows (desktop widget)")]
+    pub always_on_bottom: bool,
+    #[arg(long, help = "Enable transparent window background")]
+    pub transparent: bool,
+    #[arg(long, help = "Window position as X,Y (e.g. 100,50)")]
+    pub position: Option<String>,
+    #[arg(long, help = "Override: frequency scale exponent (<1 compresses lows, >1 stretches lows)")]
+    pub freq_scale_exp: Option<f32>,
+    #[arg(long, help = "Centered analysis window (adds half-window latency for better frequency accuracy)")]
+    pub centered: bool,
+    #[arg(long, default_value_t = 1.0, help = "GPU contrast (1.0=neutral, >1 increases, <1 decreases)")]
+    pub contrast: f32,
+    #[arg(long, default_value_t = 1.0, help = "GPU saturation (1.0=neutral, 0=grayscale, >1 oversaturated)")]
+    pub saturation: f32,
+    #[arg(long, help = "Frequency overlay (builtin name or path to .toml file, e.g. treble-bass, guitar-standard, a440)")]
+    pub overlay: Option<String>,
+    #[arg(long, help = "Print performance profiling stats (DSP, GPU, queue) every second")]
+    pub debug_profile: bool,
+    #[arg(long, help = "List available builtin colormaps and exit")]
+    pub list_colormaps: bool,
+    #[arg(long, help = "List available preset configs and exit")]
+    pub list_presets: bool,
+    #[arg(long, help = "List available overlay files and exit")]
+    pub list_overlays: bool,
 }
 
 // Phase 4 manual verification (Linux/Wayland):
@@ -64,13 +102,55 @@ pub struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = args;
-        anyhow::bail!("hyprgram requires Linux with Wayland and PipeWire");
+    if args.list_colormaps {
+        println!("Available colormaps:");
+        for name in hyprgram_core::builtin_colormap_names() {
+            println!("  {}", name);
+        }
+        println!("\nOr pass a path to a custom .toml colormap file.");
+        return Ok(());
+    }
+    if args.list_presets {
+        println!("Available preset configs (use with --config):");
+        for name in hyprgram_core::profiles::builtin_profile_names() {
+            println!("  --profile {}", name);
+        }
+        let presets_dir = std::path::Path::new("presets");
+        if presets_dir.is_dir() {
+            println!("\nPreset files in presets/:");
+            if let Ok(entries) = std::fs::read_dir(presets_dir) {
+                let mut names: Vec<String> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
+                    .map(|e| e.path().display().to_string())
+                    .collect();
+                names.sort();
+                for name in names {
+                    println!("  --config {}", name);
+                }
+            }
+        }
+        return Ok(());
+    }
+    if args.list_overlays {
+        println!("Available overlays (use with --overlay):");
+        for name in hyprgram_core::overlay::builtin_overlay_names() {
+            println!("  --overlay {}", name);
+        }
+        println!("\nOr pass a path to a custom .toml overlay file.");
+        return Ok(());
     }
     #[cfg(target_os = "linux")]
     {
         linux::run(args)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows::run(args)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    {
+        let _ = args;
+        anyhow::bail!("hyprgram requires Linux or Windows")
     }
 }

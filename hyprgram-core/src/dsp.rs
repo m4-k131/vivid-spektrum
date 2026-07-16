@@ -5,9 +5,9 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 
 /// Default real FFT length: Hann STFT window size in samples. Frequency bin spacing ≈ `sample_rate / window_size`.
-pub const DEFAULT_FFT_WINDOW_SAMPLES: usize = 20480;
-/// Default hop between STFT frames (samples). ~5.3 ms @ 48 kHz — coarse enough for ~1/128-type timing vs CPU; raise `fft` / lower hop for heavier overlap.
-pub const DEFAULT_FFT_HOP_SAMPLES: usize = 256;
+pub const DEFAULT_FFT_WINDOW_SAMPLES: usize = 8192;
+/// Default hop between STFT frames (samples). ~21 ms @ 48 kHz → ~47 columns/sec (~73 s visible at 3440 px); lower for more overlap at higher CPU cost.
+pub const DEFAULT_FFT_HOP_SAMPLES: usize = 1024;
 
 /// STFT hop must satisfy `1 <= hop <= window_size`. `hop == 0` is treated as “use half window” (50% overlap). Larger values are clamped to `window_size`.
 pub fn normalize_hop_size(window_size: usize, hop: usize) -> usize {
@@ -82,6 +82,7 @@ pub enum BandAggregation {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SpectrumConfig {
     pub window_size: usize,
     pub hop_size: usize,
@@ -109,10 +110,15 @@ pub struct SpectrumConfig {
     pub transform: Transform,
     #[serde(default = "default_cqt_bpo")]
     pub cqt_bins_per_octave: u32,
+    #[serde(default = "default_freq_scale_exp")]
+    pub freq_scale_exp: f32,
+    #[serde(default)]
+    pub centered: bool,
 }
 
 fn default_gamma() -> f32 { 1.0 }
 fn default_cqt_bpo() -> u32 { 12 }
+fn default_freq_scale_exp() -> f32 { 0.5 }
 
 impl Default for SpectrumConfig {
     fn default() -> Self {
@@ -120,20 +126,22 @@ impl Default for SpectrumConfig {
             window_size: DEFAULT_FFT_WINDOW_SAMPLES,
             hop_size: DEFAULT_FFT_HOP_SAMPLES,
             sample_rate: 48000,
-            log_bins: 256,
+            log_bins: 1024,
             f_min_hz: 20.0,
             f_max_hz: 20000.0,
-            db_floor: -80.0,
+            db_floor: -90.0,
             db_ceil: 0.0,
-            window_fn: WindowFunction::Hann,
-            band_aggregation: BandAggregation::Nearest,
-            freq_smoothing_sigma: 0.0,
-            amplitude_gamma: 1.0,
-            temporal_alpha: 0.0,
-            peak_hold_decay: 0.0,
+            window_fn: WindowFunction::BlackmanHarris,
+            band_aggregation: BandAggregation::Triangular,
+            freq_smoothing_sigma: 1.0,
+            amplitude_gamma: 0.5,
+            temporal_alpha: 0.3,
+            peak_hold_decay: 0.92,
             weighting: Weighting::None,
             transform: Transform::Stft,
             cqt_bins_per_octave: 12,
+            freq_scale_exp: 0.5,
+            centered: false,
         }
     }
 }
@@ -151,6 +159,8 @@ pub struct SpectrumProcessor {
     pending: Vec<f32>,
     weighting_weights: Vec<f32>,
     cqt_weights: Vec<Vec<(usize, f32)>>,
+    total_samples_pushed: u64,
+    centered_prefill: usize,
 }
 
 impl SpectrumProcessor {
@@ -169,6 +179,7 @@ impl SpectrumProcessor {
         let weighting_weights = build_weighting_weights(&cfg);
         let cqt_weights = build_cqt_weights(&cfg);
         let pending_cap = cfg.window_size * 2;
+        let centered_prefill = if cfg.centered { cfg.window_size / 2 } else { 0 };
         Ok(Self {
             cfg,
             r2c,
@@ -182,6 +193,8 @@ impl SpectrumProcessor {
             pending: Vec::with_capacity(pending_cap),
             weighting_weights,
             cqt_weights,
+            total_samples_pushed: 0,
+            centered_prefill,
         })
     }
     pub fn set_sample_rate(&mut self, sr: u32) {
@@ -194,13 +207,18 @@ impl SpectrumProcessor {
             self.cfg.log_bins
         }
     }
+    pub fn total_samples_pushed(&self) -> u64 {
+        self.total_samples_pushed
+    }
     pub fn push_samples(&mut self, incoming: &[f32], out_columns: &mut Vec<Vec<f32>>) {
         self.pending.extend_from_slice(incoming);
+        self.total_samples_pushed += incoming.len() as u64;
         let w = self.cfg.window_size;
         let h = self.cfg.hop_size;
         let n_bins = self.log_bins();
         out_columns.clear();
-        while self.pending.len() >= w {
+        let min_pending = w + self.centered_prefill;
+        while self.pending.len() >= min_pending {
             for i in 0..w {
                 self.work_input[i] = self.pending[i] * self.window[i];
             }
@@ -241,8 +259,9 @@ impl SpectrumProcessor {
         }
         match self.cfg.band_aggregation {
             BandAggregation::Nearest => {
+                let exp = self.cfg.freq_scale_exp.max(0.1);
                 for i in 0..col.len() {
-                    let t = i as f32 / (col.len().saturating_sub(1).max(1) as f32);
+                    let t = (i as f32 / (col.len().saturating_sub(1).max(1) as f32)).powf(exp);
                     let f = f_min * (f_max / f_min).powf(t);
                     let bin_f = f * nfft as f32 / sr;
                     let k = (bin_f.round() as usize).clamp(1, kmax);
@@ -255,7 +274,7 @@ impl SpectrumProcessor {
                 }
             }
             BandAggregation::Triangular => {
-                for i in 0..col.len() {
+                for (i, val) in col.iter_mut().enumerate() {
                     let mut mag_sum = 0.0f32;
                     let mut weight_sum = 0.0f32;
                     for &(k, w) in &self.band_weights[i] {
@@ -268,7 +287,7 @@ impl SpectrumProcessor {
                     let mag = if weight_sum > 0.0 { mag_sum / weight_sum } else { 0.0 };
                     let db = 20.0 * (mag + 1e-12).log10();
                     let u = ((db - self.cfg.db_floor) / (self.cfg.db_ceil - self.cfg.db_floor).max(1e-9)).clamp(0.0, 1.0);
-                    col[i] = u;
+                    *val = u;
                 }
             }
         }
@@ -295,7 +314,7 @@ impl SpectrumProcessor {
             }
         }
     }
-    fn apply_temporal(&mut self, col: &mut Vec<f32>) {
+    fn apply_temporal(&mut self, col: &mut [f32]) {
         let alpha = self.cfg.temporal_alpha;
         let decay = self.cfg.peak_hold_decay;
         if alpha > 0.0 && self.prev_column.len() == col.len() {
@@ -305,7 +324,7 @@ impl SpectrumProcessor {
         }
         if decay > 0.0 {
             if self.peak_column.len() != col.len() {
-                self.peak_column = col.clone();
+                self.peak_column = col.to_vec();
             } else {
                 for (v, peak) in col.iter().zip(self.peak_column.iter_mut()) {
                     *peak = (*v).max(*peak * decay);
@@ -313,7 +332,7 @@ impl SpectrumProcessor {
                 col.copy_from_slice(&self.peak_column);
             }
         }
-        self.prev_column = col.clone();
+        self.prev_column = col.to_vec();
     }
 }
 
@@ -325,13 +344,14 @@ fn build_band_weights(cfg: &SpectrumConfig) -> Vec<Vec<(usize, f32)>> {
     let f_max = cfg.f_max_hz.min(nyq).max(cfg.f_min_hz + 1.0);
     let f_min = cfg.f_min_hz.max(1.0);
     let kmax = (nfft / 2).max(1);
+    let exp = cfg.freq_scale_exp.max(0.1);
     let mut weights = Vec::with_capacity(n_bins);
     for i in 0..n_bins {
-        let t = i as f32 / (n_bins.saturating_sub(1).max(1) as f32);
+        let t = (i as f32 / (n_bins.saturating_sub(1).max(1) as f32)).powf(exp);
         let fc = f_min * (f_max / f_min).powf(t);
-        let t_prev = if i > 0 { (i - 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32) } else { 0.0 };
+        let t_prev = if i > 0 { ((i - 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32)).powf(exp) } else { 0.0 };
         let f_lo = f_min * (f_max / f_min).powf(t_prev);
-        let t_next = if i + 1 < n_bins { (i + 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32) } else { 1.0 };
+        let t_next = if i + 1 < n_bins { ((i + 1) as f32 / (n_bins.saturating_sub(1).max(1) as f32)).powf(exp) } else { 1.0 };
         let f_hi = f_min * (f_max / f_min).powf(t_next);
         let k_lo = ((f_lo * nfft as f32 / sr).floor() as usize).clamp(1, kmax);
         let k_hi = ((f_hi * nfft as f32 / sr).ceil() as usize).clamp(1, kmax);
@@ -387,7 +407,7 @@ fn build_weighting_weights(cfg: &SpectrumConfig) -> Vec<f32> {
     match cfg.weighting {
         Weighting::None => {}
         Weighting::A => {
-            for k in 0..n_bins {
+            for (k, wt) in w.iter_mut().enumerate() {
                 let f = k as f32 * sr / nfft as f32;
                 let f2 = f * f;
                 let num = 12194.0f32.powi(2) * f2 * f2;
@@ -405,11 +425,11 @@ fn build_weighting_weights(cfg: &SpectrumConfig) -> Vec<f32> {
                     * (ref_f2 + 12194.0f32.powi(2));
                 let ra_ref = ref_num / ref_den;
                 let a_weight = if ra_ref > 0.0 { ra / ra_ref } else { 1.0 };
-                w[k] = a_weight;
+                *wt = a_weight;
             }
         }
         Weighting::C => {
-            for k in 0..n_bins {
+            for (k, wt) in w.iter_mut().enumerate() {
                 let f = k as f32 * sr / nfft as f32;
                 let f2 = f * f;
                 let num = 12194.0f32.powi(2) * f2;
@@ -421,7 +441,7 @@ fn build_weighting_weights(cfg: &SpectrumConfig) -> Vec<f32> {
                 let ref_den = (ref_f2 + 20.6f32.powi(2)) * (ref_f2 + 12194.0f32.powi(2));
                 let rc_ref = ref_num / ref_den;
                 let c_weight = if rc_ref > 0.0 { rc / rc_ref } else { 1.0 };
-                w[k] = c_weight;
+                *wt = c_weight;
             }
         }
     }
@@ -534,7 +554,7 @@ mod tests {
     #[test]
     fn spectrum_processor_creates_with_defaults() {
         let proc = SpectrumProcessor::new(SpectrumConfig::default()).unwrap();
-        assert_eq!(proc.log_bins(), 256);
+        assert_eq!(proc.log_bins(), 1024);
     }
 
     #[test]

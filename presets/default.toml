@@ -1,0 +1,25 @@
+# Default profile — balanced quality and performance
+# Usage: cargo run --bin hyprgram -- --config presets/default.toml
+
+[spectrum]
+window_size = 8192
+hop_size = 1024
+sample_rate = 48000
+log_bins = 1024
+f_min_hz = 20.0
+f_max_hz = 20000.0
+db_floor = -90.0
+db_ceil = 0.0
+window_fn = "blackman-harris"
+band_aggregation = "triangular"
+freq_smoothing_sigma = 1.0
+amplitude_gamma = 0.5
+temporal_alpha = 0.3
+peak_hold_decay = 0.92
+freq_scale_exp = 0.5
+
+[image]
+width = 800
+height = 200
+scroll_right_to_left = true
+colormap = "viridis"

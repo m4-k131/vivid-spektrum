@@ -1,0 +1,27 @@
+# Minimal dark profile — aesthetic desktop widget look
+# Low saturation, high contrast, dark theme colormap.
+# Designed for always-on-desktop use with --no-decorations --always-on-bottom.
+# Usage: cargo run --bin hyprgram -- --config presets/minimal-dark.toml --no-decorations --always-on-bottom
+
+[spectrum]
+window_size = 8192
+hop_size = 1024
+sample_rate = 48000
+log_bins = 512
+f_min_hz = 30.0
+f_max_hz = 18000.0
+db_floor = -85.0
+db_ceil = 0.0
+window_fn = "blackman-harris"
+band_aggregation = "triangular"
+freq_smoothing_sigma = 1.5
+amplitude_gamma = 0.4
+temporal_alpha = 0.4
+peak_hold_decay = 0.93
+freq_scale_exp = 0.5
+
+[image]
+width = 400
+height = 120
+scroll_right_to_left = true
+colormap = "tokyo-night"

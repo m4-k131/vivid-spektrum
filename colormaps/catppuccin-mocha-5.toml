@@ -1,0 +1,31 @@
+name = "catppuccin-mocha-5"
+
+[[stops]]
+position = 0.0
+r = 0.118
+g = 0.125
+b = 0.141
+
+[[stops]]
+position = 0.25
+r = 0.490
+g = 0.227
+b = 0.545
+
+[[stops]]
+position = 0.5
+r = 0.878
+g = 0.475
+b = 0.565
+
+[[stops]]
+position = 0.75
+r = 0.976
+g = 0.788
+b = 0.380
+
+[[stops]]
+position = 1.0
+r = 0.906
+g = 0.890
+b = 0.765

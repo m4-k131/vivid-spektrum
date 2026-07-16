@@ -1,0 +1,26 @@
+# Laptop profile — low CPU usage, small window
+# Suitable for battery-powered use or slow machines.
+# Usage: cargo run --bin hyprgram -- --config presets/laptop.toml
+
+[spectrum]
+window_size = 4096
+hop_size = 2048
+sample_rate = 48000
+log_bins = 256
+f_min_hz = 20.0
+f_max_hz = 20000.0
+db_floor = -80.0
+db_ceil = 0.0
+window_fn = "hann"
+band_aggregation = "triangular"
+freq_smoothing_sigma = 0.5
+amplitude_gamma = 0.6
+temporal_alpha = 0.2
+peak_hold_decay = 0.8
+freq_scale_exp = 0.5
+
+[image]
+width = 600
+height = 150
+scroll_right_to_left = true
+colormap = "viridis"
