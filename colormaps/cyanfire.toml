@@ -1,0 +1,44 @@
+name = "cyanfire"
+
+# Black → deep teal → bright cyan → ice-white
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.2
+r = 0.0
+g = 0.12
+b = 0.15
+
+[[stops]]
+position = 0.4
+r = 0.0
+g = 0.35
+b = 0.4
+
+[[stops]]
+position = 0.6
+r = 0.05
+g = 0.7
+b = 0.75
+
+[[stops]]
+position = 0.75
+r = 0.2
+g = 0.9
+b = 0.95
+
+[[stops]]
+position = 0.88
+r = 0.55
+g = 0.97
+b = 1.0
+
+[[stops]]
+position = 1.0
+r = 0.9
+g = 1.0
+b = 1.0

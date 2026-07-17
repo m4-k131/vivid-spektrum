@@ -61,7 +61,7 @@ cargo run --bin hyprgram -- --colormap example_colormap.toml
 cargo run --bin hyprgram -- --list-colormaps  # see all available
 ```
 
-**Builtin**: viridis, inferno, magma, plasma, turbo, grayscale, heat, gruvbox-dark, catppuccin-mocha, nord, tokyo-night (+ 5-stop variants)
+**Builtin**: viridis, inferno, magma, plasma, turbo, grayscale, heat, fire, ember, gold, cyanfire, rose, aurora, nebula, spectrum, ocean, sunset, gruvbox-dark, catppuccin-mocha, nord, tokyo-night (+ 5-stop variants)
 
 Colormaps are uploaded as GPU LUT textures — zero CPU cost at runtime.
 

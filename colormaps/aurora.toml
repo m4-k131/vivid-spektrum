@@ -1,0 +1,44 @@
+name = "aurora"
+
+# Black → deep indigo → blue → cyan → ice-white (cool, no red tint)
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.18
+r = 0.05
+g = 0.0
+b = 0.2
+
+[[stops]]
+position = 0.36
+r = 0.0
+g = 0.1
+b = 0.4
+
+[[stops]]
+position = 0.54
+r = 0.0
+g = 0.4
+b = 0.65
+
+[[stops]]
+position = 0.72
+r = 0.0
+g = 0.75
+b = 0.8
+
+[[stops]]
+position = 0.86
+r = 0.35
+g = 0.9
+b = 0.95
+
+[[stops]]
+position = 1.0
+r = 0.9
+g = 0.98
+b = 1.0
