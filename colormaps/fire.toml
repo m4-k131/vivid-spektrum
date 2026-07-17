@@ -1,0 +1,44 @@
+name = "fire"
+
+# Black → dark red → bright red → orange → hot white-orange
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.2
+r = 0.12
+g = 0.01
+b = 0.0
+
+[[stops]]
+position = 0.4
+r = 0.35
+g = 0.02
+b = 0.0
+
+[[stops]]
+position = 0.6
+r = 0.7
+g = 0.06
+b = 0.0
+
+[[stops]]
+position = 0.75
+r = 1.0
+g = 0.3
+b = 0.0
+
+[[stops]]
+position = 0.88
+r = 1.0
+g = 0.65
+b = 0.1
+
+[[stops]]
+position = 1.0
+r = 1.0
+g = 0.95
+b = 0.85

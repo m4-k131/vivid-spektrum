@@ -153,7 +153,6 @@ pub struct SpectrumProcessor {
     work_input: Vec<f32>,
     spectrum: Vec<Complex<f32>>,
     band_weights: Vec<Vec<(usize, f32)>>,
-    smoothing_kernel: Vec<(isize, f32)>,
     prev_column: Vec<f32>,
     peak_column: Vec<f32>,
     pending: Vec<f32>,
@@ -175,7 +174,6 @@ impl SpectrumProcessor {
         let work_input = r2c.make_input_vec();
         let window = cfg.window_fn.generate(cfg.window_size);
         let band_weights = build_band_weights(&cfg);
-        let smoothing_kernel = build_gaussian_kernel(cfg.freq_smoothing_sigma);
         let weighting_weights = build_weighting_weights(&cfg);
         let cqt_weights = build_cqt_weights(&cfg);
         let pending_cap = cfg.window_size * 2;
@@ -187,7 +185,6 @@ impl SpectrumProcessor {
             work_input,
             spectrum,
             band_weights,
-            smoothing_kernel,
             prev_column: Vec::new(),
             peak_column: Vec::new(),
             pending: Vec::with_capacity(pending_cap),
@@ -291,15 +288,24 @@ impl SpectrumProcessor {
                 }
             }
         }
-        if !self.smoothing_kernel.is_empty() {
+        if self.cfg.freq_smoothing_sigma > 0.0 {
             let orig = col.to_vec();
-            let n = col.len() as isize;
-            for i in 0..col.len() {
+            let n = col.len();
+            let base_sigma = self.cfg.freq_smoothing_sigma;
+            for i in 0..n {
+                let t = (i as f32 + 1.0) / n as f32;
+                let sigma = base_sigma / t.max(0.01);
+                let sigma = sigma.min(n as f32 * 0.25);
+                let radius = (3.0 * sigma).ceil() as isize;
+                if radius == 0 {
+                    continue;
+                }
                 let mut sum = 0.0f32;
                 let mut wsum = 0.0f32;
-                for &(off, w) in &self.smoothing_kernel {
+                for off in -radius..=radius {
                     let j = i as isize + off;
-                    if j >= 0 && j < n {
+                    if j >= 0 && j < n as isize {
+                        let w = (-0.5 * (off as f32 / sigma).powi(2)).exp();
                         sum += orig[j as usize] * w;
                         wsum += w;
                     }
@@ -378,6 +384,7 @@ fn build_band_weights(cfg: &SpectrumConfig) -> Vec<Vec<(usize, f32)>> {
     weights
 }
 
+#[cfg(test)]
 fn build_gaussian_kernel(sigma: f32) -> Vec<(isize, f32)> {
     if sigma <= 0.0 {
         return Vec::new();

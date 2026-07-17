@@ -233,7 +233,17 @@ fn subscription(_app: &App) -> Subscription<Message> {
 }
 
 pub fn run(args: Args) -> anyhow::Result<()> {
-    let size = Size::new(args.width.unwrap_or(800) as f32, args.height.unwrap_or(200) as f32);
+    let profile_for_size = if let Some(path) = &args.config {
+        profiles::load_profile(path).ok()
+    } else if let Some(name) = &args.profile {
+        profiles::builtin_profile(name)
+    } else {
+        profiles::builtin_profile("default")
+    };
+    let img = profile_for_size.as_ref().and_then(|p| p.image.as_ref());
+    let win_w = args.width.unwrap_or(img.map_or(800, |i| i.width));
+    let win_h = args.height.unwrap_or(img.map_or(200, |i| i.height));
+    let size = Size::new(win_w as f32, win_h as f32);
     let level = if args.always_on_top {
         iced::window::Level::AlwaysOnTop
     } else if args.always_on_bottom {
