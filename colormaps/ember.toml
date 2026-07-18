@@ -1,0 +1,44 @@
+name = "ember"
+
+# Black → deep rust → bright orange → searing white-orange
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.2
+r = 0.2
+g = 0.03
+b = 0.0
+
+[[stops]]
+position = 0.4
+r = 0.5
+g = 0.08
+b = 0.0
+
+[[stops]]
+position = 0.6
+r = 0.85
+g = 0.15
+b = 0.0
+
+[[stops]]
+position = 0.75
+r = 1.0
+g = 0.35
+b = 0.0
+
+[[stops]]
+position = 0.88
+r = 1.0
+g = 0.7
+b = 0.15
+
+[[stops]]
+position = 1.0
+r = 1.0
+g = 0.97
+b = 0.9

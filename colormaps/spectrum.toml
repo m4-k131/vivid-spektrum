@@ -1,0 +1,50 @@
+name = "spectrum"
+
+# Black → violet → blue → cyan → green → yellow → white
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.15
+r = 0.12
+g = 0.0
+b = 0.22
+
+[[stops]]
+position = 0.3
+r = 0.0
+g = 0.08
+b = 0.4
+
+[[stops]]
+position = 0.45
+r = 0.0
+g = 0.35
+b = 0.55
+
+[[stops]]
+position = 0.6
+r = 0.05
+g = 0.55
+b = 0.15
+
+[[stops]]
+position = 0.75
+r = 0.65
+g = 0.75
+b = 0.0
+
+[[stops]]
+position = 0.88
+r = 1.0
+g = 0.9
+b = 0.2
+
+[[stops]]
+position = 1.0
+r = 1.0
+g = 1.0
+b = 1.0

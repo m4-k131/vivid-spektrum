@@ -1,7 +1,7 @@
 # CQT musical profile — constant-Q transform for musical analysis
 # Bins align exactly with musical pitches (12 bins/octave = semitones).
 # Great for seeing chords, melody lines, and harmonic structure.
-# Usage: cargo run --bin hyprgram -- --config presets/cqt-musical.toml
+# Usage: cargo run --bin vividspektrum -- --config presets/cqt-musical.toml
 
 [spectrum]
 window_size = 8192

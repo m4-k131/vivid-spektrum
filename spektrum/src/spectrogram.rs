@@ -156,7 +156,6 @@ pub struct SpectrogramGpu {
     cmap_texture: wgpu::Texture,
     cmap_view: wgpu::TextureView,
     cmap_sampler: wgpu::Sampler,
-    cmap_uploaded: bool,
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
     write_row: u32,
@@ -176,7 +175,7 @@ fn make_bind_group(
     cmap_sampler: &wgpu::Sampler,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("hyprgram-bg"),
+        label: Some("vividspektrum-bg"),
         layout,
         entries: &[
             wgpu::BindGroupEntry {
@@ -206,17 +205,17 @@ fn make_bind_group(
 impl shader::Pipeline for SpectrogramGpu {
     fn new(device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("hyprgram-spectrogram"),
+            label: Some("vividspektrum-spectrogram"),
             source: wgpu::ShaderSource::Wgsl(WGSL.into()),
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("hyprgram-uniform"),
+            label: Some("vividspektrum-uniform"),
             size: std::mem::size_of::<Uniforms>() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("hyprgram-sampler"),
+            label: Some("vividspektrum-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
@@ -224,7 +223,7 @@ impl shader::Pipeline for SpectrogramGpu {
             ..Default::default()
         });
         let cmap_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("hyprgram-cmap-sampler"),
+            label: Some("vividspektrum-cmap-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
@@ -232,7 +231,7 @@ impl shader::Pipeline for SpectrogramGpu {
             ..Default::default()
         });
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("hyprgram-bgl"),
+            label: Some("vividspektrum-bgl"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -279,7 +278,7 @@ impl shader::Pipeline for SpectrogramGpu {
             ],
         });
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hyprgram-spectrum"),
+            label: Some("vividspektrum-spectrum"),
             size: wgpu::Extent3d {
                 width: 4,
                 height: 4,
@@ -294,7 +293,7 @@ impl shader::Pipeline for SpectrogramGpu {
         });
         let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let cmap_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hyprgram-cmap"),
+            label: Some("vividspektrum-cmap"),
             size: wgpu::Extent3d {
                 width: 256,
                 height: 1,
@@ -310,12 +309,12 @@ impl shader::Pipeline for SpectrogramGpu {
         let cmap_view = cmap_texture.create_view(&wgpu::TextureViewDescriptor::default());
         let bind_group = make_bind_group(device, &bind_group_layout, &uniform, &texture_view, &sampler, &cmap_view, &cmap_sampler);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("hyprgram-pl"),
+            label: Some("vividspektrum-pl"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("hyprgram-rp"),
+            label: Some("vividspektrum-rp"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -348,7 +347,6 @@ impl shader::Pipeline for SpectrogramGpu {
             cmap_texture,
             cmap_view,
             cmap_sampler,
-            cmap_uploaded: false,
             bind_group,
             pipeline,
             write_row: 0,
@@ -377,34 +375,31 @@ impl shader::Primitive for SpectrogramPrimitive {
         if w > need || h > need {
             return;
         }
-        if !pipeline.cmap_uploaded {
-            let lut = &*self.colormap_lut;
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &pipeline.cmap_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                bytemuck::cast_slice(lut),
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(256 * 4),
-                    rows_per_image: Some(1),
-                },
-                wgpu::Extent3d {
-                    width: 256,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-            );
-            pipeline.cmap_uploaded = true;
-        }
+        let lut = &*self.colormap_lut;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &pipeline.cmap_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(lut),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(256 * 4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 256,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
         let cur_w = pipeline.texture.size().width;
         let cur_h = pipeline.texture.size().height;
         if cur_w != w || cur_h != h {
             pipeline.texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("hyprgram-spectrum"),
+                label: Some("vividspektrum-spectrum"),
                 size: wgpu::Extent3d {
                     width: w,
                     height: h,

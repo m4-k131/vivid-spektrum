@@ -1,0 +1,44 @@
+name = "rose"
+
+# Black → deep magenta → bright pink → white-pink
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.2
+r = 0.18
+g = 0.0
+b = 0.08
+
+[[stops]]
+position = 0.4
+r = 0.5
+g = 0.02
+b = 0.22
+
+[[stops]]
+position = 0.6
+r = 0.85
+g = 0.05
+b = 0.35
+
+[[stops]]
+position = 0.75
+r = 1.0
+g = 0.15
+b = 0.45
+
+[[stops]]
+position = 0.88
+r = 1.0
+g = 0.5
+b = 0.65
+
+[[stops]]
+position = 1.0
+r = 1.0
+g = 0.92
+b = 0.95

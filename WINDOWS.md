@@ -14,7 +14,7 @@ Rust is installed via `rustup` at `%USERPROFILE%\.cargo\bin\`. If `cargo` is not
 
 ## a) Compile
 
-From the workspace root (`hyprgram/`):
+From the workspace root (`vividspektrum/`):
 
 ```powershell
 & "$env:USERPROFILE\.cargo\bin\cargo.exe" check --workspace
@@ -31,14 +31,14 @@ To build the release binary:
 ## b) Generate a spectrogram PNG from an audio file
 
 ```powershell
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p hyprgram --bin audio_to_png -- input.mp3 output.png
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p spektrum --bin audio_to_png -- input.mp3 output.png
 ```
 
 ### Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--profile` | `default` | Built-in profile: `laptop`, `default`, `foobar-like` |
+| `--profile` | `default` | Built-in profile: `laptop`, `default`, `high-resolution` |
 | `--config` | — | Path to a TOML profile file (see `example_profile.toml`) |
 | `--width` | 800 | Output image width (px) |
 | `--height` | 200 | Output image height (px) |
@@ -53,13 +53,13 @@ CLI flags override profile/config values.
 
 ```powershell
 # Use a built-in profile
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p hyprgram --bin audio_to_png -- music.wav out.png --profile laptop
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p spektrum --bin audio_to_png -- music.wav out.png --profile laptop
 
 # Use a TOML config file
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p hyprgram --bin audio_to_png -- music.wav out.png --config my_profile.toml
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p spektrum --bin audio_to_png -- music.wav out.png --config my_profile.toml
 
 # Profile + overrides
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p hyprgram --bin audio_to_png -- music.wav out.png --profile foobar-like --width 1200 --height 300
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p spektrum --bin audio_to_png -- music.wav out.png --profile high-resolution --width 1200 --height 300
 ```
 
 Supported input formats: WAV, MP3, FLAC, AAC, Ogg Vorbis.

@@ -1,7 +1,6 @@
-# Foobar-like profile — maximum quality, high CPU
-# Mimics foobar2000's spectrogram analyzer settings.
+# High-resolution profile — maximum quality, high CPU
 # Very high resolution, heavy smoothing, fast refresh.
-# Usage: cargo run --bin hyprgram -- --config presets/foobar-like.toml
+# Usage: cargo run --bin vividspektrum -- --config presets/high-resolution.toml
 
 [spectrum]
 window_size = 32768

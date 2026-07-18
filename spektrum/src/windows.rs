@@ -1,7 +1,7 @@
 use crate::Args;
-use hyprgram::dev::{effective_spectrogram_history, SpectrogramDevConfig};
-use hyprgram::spectrogram::SpectrogramProgram;
-use hyprgram_core::{profiles, resolve_colormap, SampleRing, SpectrumProcessor};
+use spektrum::dev::{effective_spectrogram_history, SpectrogramDevConfig};
+use spektrum::spectrogram::SpectrogramProgram;
+use spektrum_core::{profiles, resolve_colormap, SampleRing, SpectrumProcessor};
 use iced::widget::container;
 use iced::widget::shader::Shader;
 use iced::{Element, Length, Size, Subscription, Task};
@@ -23,8 +23,8 @@ impl App {
         let profile = if let Some(path) = &args.config {
             profiles::load_profile(path).expect("failed to load config")
         } else if let Some(name) = &args.profile {
-            profiles::builtin_profile(name)
-                .unwrap_or_else(|| panic!("unknown profile '{}'. Available: {:?}", name, profiles::builtin_profile_names()))
+            profiles::resolve_profile(name)
+                .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
         } else {
             profiles::builtin_profile("default").unwrap()
         };
@@ -35,17 +35,17 @@ impl App {
         if let Some(v) = args.sample_rate { spectrum.sample_rate = v; }
         if let Some(ref v) = args.window_fn {
             spectrum.window_fn = match v.to_lowercase().as_str() {
-                "hann" => hyprgram_core::WindowFunction::Hann,
-                "hamming" => hyprgram_core::WindowFunction::Hamming,
-                "blackman" => hyprgram_core::WindowFunction::Blackman,
-                "blackman-harris" => hyprgram_core::WindowFunction::BlackmanHarris,
+                "hann" => spektrum_core::WindowFunction::Hann,
+                "hamming" => spektrum_core::WindowFunction::Hamming,
+                "blackman" => spektrum_core::WindowFunction::Blackman,
+                "blackman-harris" => spektrum_core::WindowFunction::BlackmanHarris,
                 other => panic!("unknown window function '{}'", other),
             };
         }
         if let Some(ref v) = args.band_agg {
             spectrum.band_aggregation = match v.to_lowercase().as_str() {
-                "nearest" => hyprgram_core::BandAggregation::Nearest,
-                "triangular" => hyprgram_core::BandAggregation::Triangular,
+                "nearest" => spektrum_core::BandAggregation::Nearest,
+                "triangular" => spektrum_core::BandAggregation::Triangular,
                 other => panic!("unknown band aggregation '{}'", other),
             };
         }
@@ -59,16 +59,16 @@ impl App {
         if let Some(v) = args.peak_decay { spectrum.peak_hold_decay = v; }
         if let Some(ref v) = args.weighting {
             spectrum.weighting = match v.to_lowercase().as_str() {
-                "none" => hyprgram_core::Weighting::None,
-                "a" => hyprgram_core::Weighting::A,
-                "c" => hyprgram_core::Weighting::C,
+                "none" => spektrum_core::Weighting::None,
+                "a" => spektrum_core::Weighting::A,
+                "c" => spektrum_core::Weighting::C,
                 other => panic!("unknown weighting '{}'", other),
             };
         }
         if let Some(ref v) = args.transform {
             spectrum.transform = match v.to_lowercase().as_str() {
-                "stft" => hyprgram_core::Transform::Stft,
-                "cqt" => hyprgram_core::Transform::Cqt,
+                "stft" => spektrum_core::Transform::Stft,
+                "cqt" => spektrum_core::Transform::Cqt,
                 other => panic!("unknown transform '{}'", other),
             };
         }
@@ -83,12 +83,12 @@ impl App {
         let height = args.height.unwrap_or(img.map_or(200, |i| i.height));
         let rtl = if args.legacy_vertical_scroll { false } else { img.map_or(true, |i| i.scroll_right_to_left) };
 
-        let history = effective_spectrogram_history(args.history, width, height, rtl);
+        let history = effective_spectrogram_history(args.history);
         let backlog_cap = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
         let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
         let ring = SampleRing::new((spectrum.sample_rate as usize) * 2);
-        let _audio = hyprgram_core::cpal::spawn_capture(args.target_object.clone(), ring.clone());
+        let _audio = spektrum_core::cpal::spawn_capture(args.target_object.clone(), ring.clone());
         let mut proc = SpectrumProcessor::new(spectrum.clone()).expect("spectrum processor");
         std::thread::spawn(move || {
             let mut scratch = vec![0.0f32; 65536];
@@ -118,8 +118,8 @@ impl App {
                     scroll_right_to_left: rtl,
                 },
                 colormap_lut,
-                contrast: args.contrast,
-                saturation: args.saturation,
+                contrast: args.contrast.unwrap_or(1.0),
+                saturation: args.saturation.unwrap_or(1.0),
             },
         }
     }
@@ -143,7 +143,7 @@ fn subscription(_app: &App) -> Subscription<Message> {
 pub fn run(args: Args) -> anyhow::Result<()> {
     let size = Size::new(args.width.unwrap_or(800) as f32, args.height.unwrap_or(200) as f32);
     iced::application(move || App::bootstrap(args.clone()), update, view)
-        .title("hyprgram")
+        .title("vividspektrum")
         .window_size(size)
         .centered()
         .subscription(subscription)

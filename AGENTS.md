@@ -1,18 +1,18 @@
-# AGENTS.md — hyprgram codebase overview
+# AGENTS.md — vividspektrum codebase overview
 
 ## What is this?
 
-A **foobar2000-class spectrogram visualizer** in Rust. Generates high-resolution spectrograms from audio — both offline (PNG from files) and live (PipeWire capture → GPU-rendered window on Linux/Wayland).
+A **spectrogram visualizer** in Rust. Generates high-resolution spectrograms from audio — both offline (PNG from files) and live (PipeWire capture → GPU-rendered window on Linux/Wayland).
 
-**Workspace root:** `c:\Users\malte\OneDrive\Documents\Code\hyprgram\hyprgram`
+**Workspace root:** `c:\Users\malte\OneDrive\Documents\Code\vivid-spektrum`
 
 ---
 
 ## Crate layout
 
 ```
-hyprgram/                    # workspace root (Cargo.toml with [workspace])
-├── hyprgram-core/           # DSP + rendering library (no GPU, no audio I/O except PipeWire)
+vivid-spektrum/                 # workspace root (Cargo.toml with [workspace])
+├── spektrum-core/           # DSP + rendering library (no GPU, no audio I/O except PipeWire)
 │   └── src/
 │       ├── dsp.rs           # SpectrumProcessor (STFT/FFT), SpectrumConfig, WindowFunction
 │       ├── render.rs        # samples_to_spectrogram (parallel), render_spectrogram_png (CPU viridis)
@@ -21,7 +21,7 @@ hyprgram/                    # workspace root (Cargo.toml with [workspace])
 │       ├── ring.rs          # SampleRing (lock-free SPSC ring buffer)
 │       ├── pipewire.rs      # #[cfg(linux)] PipeWire capture → SampleRing
 │       └── lib.rs           # re-exports
-├── hyprgram/                # application crate
+├── spektrum/                     # application crate
 │   └── src/
 │       ├── main.rs          # CLI entry point (Args with --profile/--config/overrides)
 │       ├── linux.rs         # #[cfg(linux)] Iced + WGPU live spectrogram window
@@ -31,7 +31,6 @@ hyprgram/                    # workspace root (Cargo.toml with [workspace])
 │           ├── audio_to_png.rs  # Offline: audio file → spectrogram PNG (cross-platform)
 │           └── sine_preview.rs  # #[cfg(linux)] sine generator → live spectrogram window
 ├── example_profile.toml     # Reference TOML config
-├── ROADMAP.md               # Feature plan + phased implementation order
 ├── BUILD.md                 # Linux build instructions (system deps)
 ├── WINDOWS.md               # Windows dev guide (conda PATH workaround, commands)
 └── .gitignore               # target/, *.mp3, *.png
@@ -93,7 +92,7 @@ PipeWire capture thread
 - **Temporal smoothing**: EMA (exponential moving average) and peak hold decay across columns
 - **Colormap presets**: 7 built-in colormaps (viridis, inferno, magma, plasma, turbo, grayscale, heat) via gradient-stop LUT
 - **Parallel FFT**: `samples_to_spectrogram` splits windows across rayon threads
-- **TOML profiles**: `--profile laptop|default|foobar-like` or `--config file.toml`
+- **TOML profiles**: `--profile laptop|default|high-resolution` or `--config file.toml`
 - **CLI overrides**: any `--fft`, `--hop`, `--window-fn`, `--width`, etc. overrides profile
 - **Offline PNG**: `audio_to_png` binary works on Windows, macOS, Linux
 - **Live GPU rendering**: Linux/Wayland only (iced + wgpu + PipeWire)
@@ -102,9 +101,9 @@ PipeWire capture thread
 - **CQT**: constant-Q transform with configurable bins/octave (alternative to STFT+log)
 - **Non-power-of-two FFT**: supported by rustfft mixed-radix planner
 
-## What's NOT yet implemented
+## Scope
 
-See `ROADMAP.md` for full list. Phase 1 and 2 complete. Next: Phase 3 — Realtime integration (Linux/Wayland).
+The current codebase is feature complete for the planned offline/live spectrogram pipeline; remaining work is cleanup and polish.
 
 ---
 
@@ -115,10 +114,10 @@ See `ROADMAP.md` for full list. Phase 1 and 2 complete. Next: Phase 3 — Realti
 & "$env:USERPROFILE\.cargo\bin\cargo.exe" check --workspace
 
 # Run offline PNG generator
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p hyprgram --bin audio_to_png -- input.mp3 output.png
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p spektrum --bin audio_to_png -- input.mp3 output.png
 
 # With profile + overrides
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p hyprgram --bin audio_to_png -- input.mp3 out.png --profile foobar-like --window-fn blackman-harris
+& "$env:USERPROFILE\.cargo\bin\cargo.exe" run -p spektrum --bin audio_to_png -- input.mp3 out.png --profile high-resolution --window-fn blackman-harris
 ```
 
 On Linux without conda, just use `cargo` directly.

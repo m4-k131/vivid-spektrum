@@ -1,0 +1,44 @@
+name = "nebula"
+
+# Black → deep purple → magenta → orange → white-pink
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.18
+r = 0.15
+g = 0.0
+b = 0.2
+
+[[stops]]
+position = 0.36
+r = 0.4
+g = 0.0
+b = 0.45
+
+[[stops]]
+position = 0.54
+r = 0.75
+g = 0.05
+b = 0.4
+
+[[stops]]
+position = 0.72
+r = 1.0
+g = 0.25
+b = 0.15
+
+[[stops]]
+position = 0.86
+r = 1.0
+g = 0.7
+b = 0.25
+
+[[stops]]
+position = 1.0
+r = 1.0
+g = 0.95
+b = 0.9

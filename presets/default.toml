@@ -1,5 +1,5 @@
 # Default profile — balanced quality and performance
-# Usage: cargo run --bin hyprgram -- --config presets/default.toml
+# Usage: cargo run --bin vividspektrum -- --config presets/default.toml
 
 [spectrum]
 window_size = 8192

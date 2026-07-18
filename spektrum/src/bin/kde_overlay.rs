@@ -1,9 +1,9 @@
 #[cfg(target_os = "linux")]
 mod inner {
     use clap::Parser;
-    use hyprgram::dev::{SpectrogramDevConfig, effective_spectrogram_history};
-    use hyprgram::spectrogram::SpectrogramProgram;
-    use hyprgram_core::{default_colormap, profiles, SampleRing, SpectrumProcessor};
+    use spektrum::dev::{SpectrogramDevConfig, effective_spectrogram_history};
+    use spektrum::spectrogram::SpectrogramProgram;
+    use spektrum_core::{default_colormap, profiles, SampleRing, SpectrumProcessor};
     use iced::widget::container;
     use iced::widget::shader::Shader;
     use iced::{Color, Element, Length, Subscription, Task};
@@ -23,7 +23,7 @@ mod inner {
     pub struct Args {
         #[arg(long, help = "PipeWire target object id or name")]
         pub target_object: Option<String>,
-        #[arg(long, help = "Built-in profile: laptop, default, foobar-like")]
+        #[arg(long, help = "Built-in profile: laptop, default, high-resolution")]
         pub profile: Option<String>,
         #[arg(long, help = "Path to a TOML profile file")]
         pub config: Option<std::path::PathBuf>,
@@ -125,8 +125,8 @@ mod inner {
         let profile = if let Some(path) = &args.config {
             profiles::load_profile(path).expect("failed to load config")
         } else if let Some(name) = &args.profile {
-            profiles::builtin_profile(name)
-                .unwrap_or_else(|| panic!("unknown profile '{}'", name))
+            profiles::resolve_profile(name)
+                .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
         } else {
             profiles::builtin_profile("default").unwrap()
         };
@@ -137,12 +137,12 @@ mod inner {
         let height = args.height.unwrap_or(img.map_or(200, |i| i.height));
         let rtl = if args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
 
-        let history = effective_spectrogram_history(args.history, width.max(1), height, rtl);
+        let history = effective_spectrogram_history(args.history);
         let backlog_cap = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
         let pending_spectra: Arc<Mutex<VecDeque<Vec<f32>>>> = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
         let ring = SampleRing::new((spectrum.sample_rate as usize) * 2);
-        let _pw = hyprgram_core::pipewire::spawn_capture(args.target_object.clone(), ring.clone());
+        let _pw = spektrum_core::pipewire::spawn_capture(args.target_object.clone(), ring.clone());
         let bins = spectrum.log_bins;
         let mut proc = SpectrumProcessor::new(spectrum).expect("spectrum processor");
         std::thread::spawn(move || {
@@ -189,7 +189,7 @@ mod inner {
             None => StartMode::Active,
         };
 
-        application(move || App { prog: prog.clone() }, "hyprgram-overlay", update, view)
+        application(move || App { prog: prog.clone() }, "vividspektrum-overlay", update, view)
             .subscription(subscription)
             .theme(iced::Theme::Dark)
             .style(style)

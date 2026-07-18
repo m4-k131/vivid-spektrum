@@ -1,5 +1,5 @@
-# Custom colormap for hyprgram
-# Usage: cargo run --bin hyprgram -- --colormap example_colormap.toml
+# Custom colormap for vividspektrum
+# Usage: cargo run --bin vividspektrum -- --colormap example_colormap.toml
 #
 # Each stop has:
 #   position = 0.0 to 1.0 (where in the magnitude range)

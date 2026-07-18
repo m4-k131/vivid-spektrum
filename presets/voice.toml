@@ -1,7 +1,7 @@
 # Voice/speech profile — focused on vocal frequency range
 # Narrow band (80 Hz - 8 kHz), high temporal resolution for transients.
 # Good for podcasts, calls, vocal analysis.
-# Usage: cargo run --bin hyprgram -- --config presets/voice.toml
+# Usage: cargo run --bin vividspektrum -- --config presets/voice.toml
 
 [spectrum]
 window_size = 4096

@@ -1,7 +1,7 @@
 # Minimal dark profile — aesthetic desktop widget look
 # Low saturation, high contrast, dark theme colormap.
 # Designed for always-on-desktop use with --no-decorations --always-on-bottom.
-# Usage: cargo run --bin hyprgram -- --config presets/minimal-dark.toml --no-decorations --always-on-bottom
+# Usage: cargo run --bin vividspektrum -- --config presets/minimal-dark.toml --no-decorations --always-on-bottom
 
 [spectrum]
 window_size = 8192

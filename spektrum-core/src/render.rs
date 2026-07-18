@@ -13,9 +13,15 @@ pub struct SpectrogramImageConfig {
     pub scroll_right_to_left: bool,
     #[serde(default = "default_colormap_name")]
     pub colormap: String,
+    #[serde(default = "default_contrast")]
+    pub contrast: f32,
+    #[serde(default = "default_saturation")]
+    pub saturation: f32,
 }
 
 fn default_colormap_name() -> String { "viridis".into() }
+fn default_contrast() -> f32 { 1.0 }
+fn default_saturation() -> f32 { 1.0 }
 
 impl Default for SpectrogramImageConfig {
     fn default() -> Self {
@@ -25,6 +31,8 @@ impl Default for SpectrogramImageConfig {
             height: 200,
             scroll_right_to_left: true,
             colormap: "viridis".into(),
+            contrast: 1.0,
+            saturation: 1.0,
         }
     }
 }
@@ -91,7 +99,7 @@ pub fn render_spectrogram_png_with_grid<P: AsRef<Path>>(
     let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(width, height);
     for y in 0..height {
         for x in 0..width {
-            let value = if config.scroll_right_to_left {
+            let mut value = if config.scroll_right_to_left {
                 let col = sample_index(x, width, columns.len());
                 let bin = sample_index(height - 1 - y, height, bins);
                 sample_column(columns, col, bin)
@@ -100,8 +108,16 @@ pub fn render_spectrogram_png_with_grid<P: AsRef<Path>>(
                 let bin = sample_index(x, width, bins);
                 sample_column(columns, col, bin)
             };
-            let idx = (value.clamp(0.0, 1.0) * 255.0).round() as usize;
-            img.put_pixel(x, y, Rgb(lut[idx]));
+            value = ((value - 0.5) * config.contrast + 0.5).clamp(0.0, 1.0);
+            let idx = (value * 255.0).round() as usize;
+            let mut rgb = lut[idx];
+            if config.saturation != 1.0 {
+                let lum = 0.2126 * rgb[0] as f32 + 0.7152 * rgb[1] as f32 + 0.0722 * rgb[2] as f32;
+                for c in &mut rgb {
+                    *c = (lum + (config.saturation * (*c as f32 - lum))).round().clamp(0.0, 255.0) as u8;
+                }
+            }
+            img.put_pixel(x, y, Rgb(rgb));
         }
     }
 

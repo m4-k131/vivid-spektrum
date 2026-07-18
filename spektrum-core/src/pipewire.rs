@@ -54,7 +54,7 @@ fn run_capture_lockfree(target: Option<String>, producer: SampleRingProducer) ->
     if let Some(t) = target {
         props.insert("target.object", t);
     }
-    let stream = pw::stream::StreamBox::new(&core, "hyprgram-capture", props)?;
+    let stream = pw::stream::StreamBox::new(&core, "vividspektrum-capture", props)?;
     let _listener = stream
         .add_local_listener_with_user_data(data)
         .param_changed(|_, user_data, id, param| {
@@ -144,7 +144,7 @@ fn run_capture(target: Option<String>, ring: SampleRing) -> Result<(), CoreError
     if let Some(t) = target {
         props.insert("target.object", t);
     }
-    let stream = pw::stream::StreamBox::new(&core, "hyprgram-capture", props)?;
+    let stream = pw::stream::StreamBox::new(&core, "vividspektrum-capture", props)?;
     let _listener = stream
         .add_local_listener_with_user_data(data)
         .param_changed(|_, user_data, id, param| {

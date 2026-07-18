@@ -1,0 +1,50 @@
+name = "ocean"
+
+# Black → indigo → blue → teal → seafoam → white (wide ocean spectrum)
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.15
+r = 0.05
+g = 0.0
+b = 0.18
+
+[[stops]]
+position = 0.3
+r = 0.0
+g = 0.15
+b = 0.4
+
+[[stops]]
+position = 0.45
+r = 0.0
+g = 0.4
+b = 0.65
+
+[[stops]]
+position = 0.6
+r = 0.1
+g = 0.65
+b = 0.75
+
+[[stops]]
+position = 0.75
+r = 0.25
+g = 0.8
+b = 0.55
+
+[[stops]]
+position = 0.88
+r = 0.6
+g = 0.95
+b = 0.7
+
+[[stops]]
+position = 1.0
+r = 0.95
+g = 1.0
+b = 0.95
