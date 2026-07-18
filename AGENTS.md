@@ -31,7 +31,6 @@ vivid-spektrum/                 # workspace root (Cargo.toml with [workspace])
 │           ├── audio_to_png.rs  # Offline: audio file → spectrogram PNG (cross-platform)
 │           └── sine_preview.rs  # #[cfg(linux)] sine generator → live spectrogram window
 ├── example_profile.toml     # Reference TOML config
-├── ROADMAP.md               # Feature plan + phased implementation order
 ├── BUILD.md                 # Linux build instructions (system deps)
 ├── WINDOWS.md               # Windows dev guide (conda PATH workaround, commands)
 └── .gitignore               # target/, *.mp3, *.png
@@ -102,9 +101,9 @@ PipeWire capture thread
 - **CQT**: constant-Q transform with configurable bins/octave (alternative to STFT+log)
 - **Non-power-of-two FFT**: supported by rustfft mixed-radix planner
 
-## What's NOT yet implemented
+## Scope
 
-See `ROADMAP.md` for full list. Phase 1 and 2 complete. Next: Phase 3 — Realtime integration (Linux/Wayland).
+The current codebase is feature complete for the planned offline/live spectrogram pipeline; remaining work is cleanup and polish.
 
 ---
 
