@@ -1,6 +1,6 @@
 # Laptop profile — low CPU usage, small window
 # Suitable for battery-powered use or slow machines.
-# Usage: cargo run --bin hyprgram -- --config presets/laptop.toml
+# Usage: cargo run --bin vividspektrum -- --config presets/laptop.toml
 
 [spectrum]
 window_size = 4096

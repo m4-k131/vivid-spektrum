@@ -1,9 +1,9 @@
 #[cfg(target_os = "linux")]
 mod inner {
     use clap::Parser;
-    use hyprgram::dev::{SpectrogramDevConfig, effective_spectrogram_history};
-    use hyprgram::spectrogram::SpectrogramProgram;
-    use hyprgram_core::{default_colormap, profiles, SampleRing, SpectrumProcessor};
+    use spektrum::dev::{SpectrogramDevConfig, effective_spectrogram_history};
+    use spektrum::spectrogram::SpectrogramProgram;
+    use spektrum_core::{default_colormap, profiles, SampleRing, SpectrumProcessor};
     use iced::widget::container;
     use iced::widget::shader::Shader;
     use iced::{Color, Element, Length, Subscription, Task};
@@ -23,7 +23,7 @@ mod inner {
     pub struct Args {
         #[arg(long, help = "PipeWire target object id or name")]
         pub target_object: Option<String>,
-        #[arg(long, help = "Built-in profile: laptop, default, foobar-like")]
+        #[arg(long, help = "Built-in profile: laptop, default, high-resolution")]
         pub profile: Option<String>,
         #[arg(long, help = "Path to a TOML profile file")]
         pub config: Option<std::path::PathBuf>,
@@ -142,7 +142,7 @@ mod inner {
         let pending_spectra: Arc<Mutex<VecDeque<Vec<f32>>>> = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
         let ring = SampleRing::new((spectrum.sample_rate as usize) * 2);
-        let _pw = hyprgram_core::pipewire::spawn_capture(args.target_object.clone(), ring.clone());
+        let _pw = spektrum_core::pipewire::spawn_capture(args.target_object.clone(), ring.clone());
         let bins = spectrum.log_bins;
         let mut proc = SpectrumProcessor::new(spectrum).expect("spectrum processor");
         std::thread::spawn(move || {
@@ -189,7 +189,7 @@ mod inner {
             None => StartMode::Active,
         };
 
-        application(move || App { prog: prog.clone() }, "hyprgram-overlay", update, view)
+        application(move || App { prog: prog.clone() }, "vividspektrum-overlay", update, view)
             .subscription(subscription)
             .theme(iced::Theme::Dark)
             .style(style)

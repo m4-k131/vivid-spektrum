@@ -1,5 +1,5 @@
 //! Normal window (not layer-shell): sine → same DSP + spectrogram shader as the main app.
-//! Run: `cargo run -p hyprgram --bin sine_preview`
+//! Run: `cargo run -p spektrum --bin sine_preview`
 #[cfg(not(target_os = "linux"))]
 fn main() {
     eprintln!("sine_preview is only supported on Linux (requires iced/Wayland)");
@@ -8,11 +8,11 @@ fn main() {
 #[cfg(target_os = "linux")]
 use clap::Parser;
 #[cfg(target_os = "linux")]
-use hyprgram::dev::{effective_spectrogram_history, SpectrogramDevConfig};
+use spektrum::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 #[cfg(target_os = "linux")]
-use hyprgram::spectrogram::SpectrogramProgram;
+use spektrum::spectrogram::SpectrogramProgram;
 #[cfg(target_os = "linux")]
-use hyprgram_core::{
+use spektrum_core::{
     default_colormap, SpectrumConfig, SpectrumProcessor, DEFAULT_FFT_HOP_SAMPLES,
     DEFAULT_FFT_WINDOW_SAMPLES,
 };
@@ -159,7 +159,7 @@ fn main() -> iced::Result {
     let args = PreviewArgs::parse();
     let size = Size::new(args.width as f32, args.height as f32);
     iced::application(move || Preview::new(args.clone()), update, view)
-        .title("hyprgram sine preview")
+        .title("vividspektrum sine preview")
         .window_size(size)
         .centered()
         .subscription(subscription)

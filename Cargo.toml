@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["hyprgram-core", "hyprgram"]
+members = ["spektrum-core", "spektrum"]
 
 [workspace.package]
 edition = "2021"

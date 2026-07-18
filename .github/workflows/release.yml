@@ -27,19 +27,19 @@ jobs:
 
       - name: Package
         run: |
-          mkdir -p hyprgram-linux
-          cp target/release/hyprgram hyprgram-linux/
-          cp target/release/kde_overlay hyprgram-linux/
-          cp target/release/audio_to_png hyprgram-linux/
-          cp target/release/sine_preview hyprgram-linux/
-          cp -r presets colormaps overlays hyprgram-linux/
-          tar czf hyprgram-linux-x86_64.tar.gz hyprgram-linux
+          mkdir -p vividspektrum-linux
+          cp target/release/vividspektrum vividspektrum-linux/
+          cp target/release/kde_overlay vividspektrum-linux/
+          cp target/release/audio_to_png vividspektrum-linux/
+          cp target/release/sine_preview vividspektrum-linux/
+          cp -r presets colormaps overlays vividspektrum-linux/
+          tar czf vividspektrum-linux-x86_64.tar.gz vividspektrum-linux
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hyprgram-linux-x86_64
-          path: hyprgram-linux-x86_64.tar.gz
+          name: vividspektrum-linux-x86_64
+          path: vividspektrum-linux-x86_64.tar.gz
 
   build-windows:
     runs-on: windows-latest
@@ -49,22 +49,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build release binaries
-        run: cargo build --release --bin hyprgram --bin audio_to_png
+        run: cargo build --release --bin vividspektrum --bin audio_to_png
 
       - name: Package
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path hyprgram-windows
-          Copy-Item target\release\hyprgram.exe hyprgram-windows\hyprgram.exe
-          Copy-Item target\release\audio_to_png.exe hyprgram-windows\audio_to_png.exe
-          Copy-Item -Recurse presets colormaps overlays hyprgram-windows
-          Compress-Archive -Path hyprgram-windows -DestinationPath hyprgram-windows-x86_64.zip
+          New-Item -ItemType Directory -Force -Path vividspektrum-windows
+          Copy-Item target\release\vividspektrum.exe vividspektrum-windows\vividspektrum.exe
+          Copy-Item target\release\audio_to_png.exe vividspektrum-windows\audio_to_png.exe
+          Copy-Item -Recurse presets colormaps overlays vividspektrum-windows
+          Compress-Archive -Path vividspektrum-windows -DestinationPath vividspektrum-windows-x86_64.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hyprgram-windows-x86_64
-          path: hyprgram-windows-x86_64.zip
+          name: vividspektrum-windows-x86_64
+          path: vividspektrum-windows-x86_64.zip
 
   release:
     needs: [build-linux, build-windows]
@@ -73,16 +73,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: hyprgram-linux-x86_64
+          name: vividspektrum-linux-x86_64
 
       - uses: actions/download-artifact@v4
         with:
-          name: hyprgram-windows-x86_64
+          name: vividspektrum-windows-x86_64
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            hyprgram-linux-x86_64.tar.gz
-            hyprgram-windows-x86_64.zip
+            vividspektrum-linux-x86_64.tar.gz
+            vividspektrum-windows-x86_64.zip
           generate_release_notes: true

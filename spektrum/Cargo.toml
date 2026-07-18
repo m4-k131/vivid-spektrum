@@ -1,9 +1,13 @@
 [package]
-name = "hyprgram"
+name = "spektrum"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-default-run = "hyprgram"
+default-run = "vividspektrum"
+
+[[bin]]
+name = "vividspektrum"
+path = "src/main.rs"
 
 [[bin]]
 name = "kde_overlay"
@@ -13,7 +17,7 @@ required-features = []
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-hyprgram-core = { path = "../hyprgram-core" }
+spektrum-core = { path = "../spektrum-core" }
 symphonia = { version = "0.5", default-features = false, features = ["aac", "flac", "isomp4", "mp3", "ogg", "pcm", "vorbis", "wav"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

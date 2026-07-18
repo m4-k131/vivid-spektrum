@@ -7,11 +7,11 @@ mod linux;
 mod windows;
 
 #[derive(Parser, Debug, Clone)]
-#[command(name = "hyprgram", about = "PipeWire live spectrogram (Wayland window)")]
+#[command(name = "vividspektrum", about = "PipeWire live spectrogram (Wayland window)")]
 pub struct Args {
     #[arg(long, help = "PipeWire target object id or name for capture stream")]
     pub target_object: Option<String>,
-    #[arg(long, help = "Built-in profile: laptop, default, foobar-like")]
+    #[arg(long, help = "Built-in profile: laptop, default, high-resolution")]
     pub profile: Option<String>,
     #[arg(long, help = "Path to a TOML profile file")]
     pub config: Option<std::path::PathBuf>,
@@ -80,10 +80,10 @@ pub struct Args {
     pub freq_scale_exp: Option<f32>,
     #[arg(long, help = "Centered analysis window (adds half-window latency for better frequency accuracy)")]
     pub centered: bool,
-    #[arg(long, default_value_t = 1.0, help = "GPU contrast (1.0=neutral, >1 increases, <1 decreases)")]
-    pub contrast: f32,
-    #[arg(long, default_value_t = 1.0, help = "GPU saturation (1.0=neutral, 0=grayscale, >1 oversaturated)")]
-    pub saturation: f32,
+    #[arg(long, help = "GPU contrast (1.0=neutral, >1 increases, <1 decreases)")]
+    pub contrast: Option<f32>,
+    #[arg(long, help = "GPU saturation (1.0=neutral, 0=grayscale, >1 oversaturated)")]
+    pub saturation: Option<f32>,
     #[arg(long, help = "Frequency overlay (builtin name or path to .toml file, e.g. treble-bass, guitar-standard, a440)")]
     pub overlay: Option<String>,
     #[arg(long, help = "Print performance profiling stats (DSP, GPU, queue) every second")]
@@ -97,14 +97,14 @@ pub struct Args {
 }
 
 // Phase 4 manual verification (Linux/Wayland):
-// - Latency vs resolution: window/hop/sample-rate tradeoff (see hyprgram-core dsp defaults).
+// - Latency vs resolution: window/hop/sample-rate tradeoff (see spektrum-core dsp defaults).
 // - CPU: profile with perf; watch extra copies between PipeWire ring, DSP, and GPU upload.
 
 fn main() -> Result<()> {
     let args = Args::parse();
     if args.list_colormaps {
         println!("Available colormaps:");
-        for name in hyprgram_core::builtin_colormap_names() {
+        for name in spektrum_core::builtin_colormap_names() {
             println!("  {}", name);
         }
         println!("\nOr pass a path to a custom .toml colormap file.");
@@ -112,7 +112,7 @@ fn main() -> Result<()> {
     }
     if args.list_presets {
         println!("Available preset configs (use with --config):");
-        for name in hyprgram_core::profiles::builtin_profile_names() {
+        for name in spektrum_core::profiles::builtin_profile_names() {
             println!("  --profile {}", name);
         }
         let presets_dir = std::path::Path::new("presets");
@@ -134,7 +134,7 @@ fn main() -> Result<()> {
     }
     if args.list_overlays {
         println!("Available overlays (use with --overlay):");
-        for name in hyprgram_core::overlay::builtin_overlay_names() {
+        for name in spektrum_core::overlay::builtin_overlay_names() {
             println!("  --overlay {}", name);
         }
         println!("\nOr pass a path to a custom .toml overlay file.");
@@ -151,6 +151,6 @@ fn main() -> Result<()> {
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     {
         let _ = args;
-        anyhow::bail!("hyprgram requires Linux or Windows")
+        anyhow::bail!("vividspektrum requires Linux or Windows")
     }
 }

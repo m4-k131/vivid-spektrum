@@ -1,9 +1,9 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# hyprgram configuration
+# vividspektrum configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Usage:
-#   cargo run --bin hyprgram -- --config default_config.toml
+#   cargo run --bin vividspektrum -- --config default_config.toml
 #
 # All values shown below are the defaults. Uncomment and change what you need.
 # CLI flags (e.g. --fft 4096) override values from this file.

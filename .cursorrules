@@ -1,4 +1,4 @@
-# Hyprgram — Rust / Wayland / systems
+# Vividspektrum — Rust / Wayland / systems
 
 ## Role
 
@@ -11,7 +11,7 @@ Prefer dense, compact code. Minimize vertical whitespace. Do not insert empty li
 ## Errors
 
 - Binary / CLI / `main`: use `anyhow` for ergonomic error propagation.
-- Library crates (`hyprgram-core` and reusable modules): use `thiserror` for typed, public errors.
+- Library crates (`spektrum-core` and reusable modules): use `thiserror` for typed, public errors.
 
 ## Logging
 
@@ -21,16 +21,16 @@ Do not add structured logging (`tracing`, `log`, spans) unless implementing a co
 
 Use Markdown with clear headings. Never use emojis.
 
-## Spectrogram quality target (foobar2000-class)
+## Spectrogram quality target
 
-The **reference** for “good” output is the **foobar2000** ecosystem: high time and frequency resolution on **local playback**, **CPU-heavy** but acceptable. The closest documented baseline is third-party component **`foo_vis_spectrum_analyzer`** (successor to Musical Spectrum; DirectX UI; open source). Hyprgram is PipeWire + STFT/WGPU, not a port, but **feature and quality decisions** should be judged against that bar.
+The reference for “good” output is a high-resolution, CPU-heavy but acceptable spectrogram analyzer: high time and frequency resolution on **local playback**, visually clean, and accurate. This project uses PipeWire + STFT/WGPU and is not a port of any existing tool; feature and quality decisions should be judged against that bar.
 
 **From upstream docs (verify in wiki / releases when changing DSP):**
 
 - **FFT “No. of bins”**: configurable **64–32768**; non-power-of-two sizes cost more CPU; **sample-rate-based** window length is supported (e.g. duration × sample rate).
-- **Transforms**: not only FFT — **CQT**, **SWIFT**, **Analog-style** exist there; we currently use a **real FFT + Hann STFT** — document gaps if we stay FFT-only.
+- **Transforms**: not only FFT — **CQT**, **SWIFT**, **Analog-style** exist in the reference analyzer ecosystem; we currently use a **real FFT + Hann STFT** — document gaps if we stay FFT-only.
 - **Display mapping**: triangular filter bank, **Lanczos**-smoothed coefficient transitions, **log / mel / bark**-style frequency scales — our **`log_bins`** is a coarse subset; improving “spectral smoothness” may need similar ideas.
 - **Refresh**: modern builds use a **high-resolution timer** (refresh **> 60 Hz** if the machine can); our redraw is **~60 Hz** unless we raise tick rate or event-driven redraw.
 - **Spectrogram mode**: dedicated **spectrogram** visualization with **scrolling** — aligns with our waterfall + history texture.
 
-**Implications for this repo:** Prefer **correctness and resolution** over shaving CPU until a knob or profile says otherwise. When adding defaults or optimizations, state the tradeoff vs this reference. Useful pointers: [foo_vis_spectrum_analyzer](https://www.foobar2000.org/components/view/foo_vis_spectrum_analyzer), [Hydrogenaudio wiki](https://wiki.hydrogenaud.io/index.php?title=Foobar2000:Components/Spectrum_Analyzer_(foo_vis_spectrum_analyzer)), [source (GitHub)](https://github.com/stuerp/foo_vis_spectrum_analyzer).
+**Implications for this repo:** Prefer **correctness and resolution** over shaving CPU until a knob or profile says otherwise. When adding defaults or optimizations, state the tradeoff vs this reference.

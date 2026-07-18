@@ -1,8 +1,7 @@
-# Hyprgram: foobar-like spectrogram roadmap
+# vividspektrum: high-resolution spectrogram roadmap
 
-This document lists **features and techniques** (not magic numbers) toward a **foobar2000-class** spectrogram: high resolution, CPU-heavy but acceptable. It is meant for **planning and handoff**; implement in order of phases unless a later item is explicitly scoped.
+This document lists **features and techniques** (not magic numbers) toward a **high-resolution** spectrogram: high resolution, CPU-heavy but acceptable. It is meant for **planning and handoff**; implement in order of phases unless a later item is explicitly scoped.
 
-**Reference:** third-party component `foo_vis_spectrum_analyzer` (and wiki), not a single built-in default. See `.cursorrules` (Spectrogram quality target) for links.
 
 ---
 
@@ -11,8 +10,8 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 | Feature / technique | What it buys you | Status |
 |---------------------|------------------|--------|
 | Clock-locked analysis | Analysis aligned to real playback time, less drift vs what you hear. | Done: sample counter (`total_samples_pushed`) tracks position; pipeline latency logged at startup. |
-| Reaction / lookahead alignment | Foobar exposes "reaction alignment" (centered vs causal window). | Done: `--centered` flag adds half-window prefill delay for centered (non-causal) analysis. Default: causal. |
-| Refresh decoupled from FFT rate | UI can draw at display Hz while STFT runs faster (foobar: >60 Hz refresh). | Done: render at 60fps (iced tick), DSP at ~47 cols/sec (hop=1024); pending_spectra queue with backlog cap. |
+| Reaction / lookahead alignment | Centered vs causal window alignment. | Done: `--centered` flag adds half-window prefill delay for centered (non-causal) analysis. Default: causal. |
+| Refresh decoupled from FFT rate | UI can draw at display Hz while STFT runs faster. | Done: render at 60fps (iced tick), DSP at ~47 cols/sec (hop=1024); pending_spectra queue with backlog cap. |
 | Lock-free audio pipeline | PipeWire RT thread never blocks DSP thread. | Done: `SampleRingProducer`/`SampleRingConsumer` split; `spawn_capture_lockfree()`. |
 
 ---
@@ -22,8 +21,8 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 | Feature / technique | What it buys you | Status |
 |-----------------------|------------------|--------|
 | Constant-Q (CQT) or filter-bank STFT | Log-frequency resolution that matches musical pitch; fewer misleading bins at low end. | Done: CQT path with configurable bins/octave (`--transform cqt`, `--cqt-bpo`). |
-| SWIFT / IIR-style bands (foobar option) | Alternative time-frequency tiling; different CPU profile. | Pending (Phase 6). |
-| Configurable window family | Hann vs Hamming vs Gaussian/Kaiser (foobar has window + skew). | Done: 4 window functions (`--window-fn hann|hamming|blackman|blackman-harris`). |
+| SWIFT / IIR-style bands | Alternative time-frequency tiling; different CPU profile. | Pending (Phase 6). |
+| Configurable window family | Hann vs Hamming vs Blackman vs Blackman-Harris; extensible to Gaussian/Kaiser. | Done: 4 window functions (`--window-fn hann|hamming|blackman|blackman-harris`). |
 
 ---
 
@@ -31,9 +30,9 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 
 | Feature / technique | What it buys you | Status |
 |-----------------------|------------------|--------|
-| Non-power-of-two FFT (optional) | Foobar allows custom sizes at CPU cost; matches arbitrary ms windows. | Done: rustfft mixed-radix planner supports arbitrary N. |
-| Per-bin aggregation | min/max/mean/RMS across FFT bins mapped to one display band (foobar has many modes). | Done: Triangular filter bank (default) + Nearest-bin; selectable via `--band-agg`. |
-| Lanczos (or similar) smoothing across frequency | Softer, less "sparkly" spectrum; foobar documents Lanczos kernel size. | Done: Gaussian frequency smoothing (`--smoothing`, default sigma=1.0). |
+| Non-power-of-two FFT (optional) | Custom window sizes at CPU cost; matches arbitrary ms windows. | Done: rustfft mixed-radix planner supports arbitrary N. |
+| Per-bin aggregation | min/max/mean/RMS across FFT bins mapped to one display band. | Done: Triangular filter bank (default) + Nearest-bin; selectable via `--band-agg`. |
+| Lanczos (or similar) smoothing across frequency | Softer, less "sparkly" spectrum. | Done: Gaussian frequency smoothing (`--smoothing`, default sigma=1.0). |
 
 ---
 
@@ -43,7 +42,7 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 |-----------------------|------------------|--------|
 | Triangular / mel / bark filter banks | Perceptual weighting; closer to "analyzer" sound than raw FFT magnitude. | Partial: Triangular filter bank is default; mel/bark not yet implemented. |
 | Frequency scale warping | Control how much screen space low vs high frequencies get. | Done: `freq_scale_exp` (`--freq-scale-exp`, default 0.5): <1 compresses lows, >1 stretches lows. |
-| Brown-Puckette-style CQT mapping | Foobar-specific option for CQT path. | Partial: CQT transform exists (`--transform cqt`), but Brown-Puckette mapping not implemented. |
+| Brown-Puckette-style CQT mapping | Alternative CQT mapping method. | Partial: CQT transform exists (`--transform cqt`), but Brown-Puckette mapping not implemented. |
 | Suppress mirror / Nyquist guard | Cleaner high-frequency end. | Pending. |
 
 ---
@@ -52,8 +51,8 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 
 | Feature / technique | What it buys you | Status |
 |-----------------------|------------------|--------|
-| dB scale + stable floor/ceiling | Foobar uses dB ranges on axes; avoids "everything is neon". | Done: dB floor/ceil (default -90/0), amplitude gamma (default 0.5). |
-| Temporal smoothing (per bin or per frame) | Less flicker; foobar has smoothing factor + peak hold modes. | Done: EMA temporal smoothing (`--temporal-alpha`, default 0.3) + peak hold decay (`--peak-decay`, default 0.92). |
+| dB scale + stable floor/ceiling | dB ranges on axes; avoids "everything is neon". | Done: dB floor/ceil (default -90/0), amplitude gamma (default 0.5). |
+| Temporal smoothing (per bin or per frame) | Less flicker; smoothing factor + peak hold modes. | Done: EMA temporal smoothing (`--temporal-alpha`, default 0.3) + peak hold decay (`--peak-decay`, default 0.92). |
 | A/C-weighting (optional) | Loudness-relevant spectrum. | Done: IEC 61672 A and C weighting (`--weighting a|c`). |
 
 ---
@@ -63,7 +62,7 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 | Feature / technique | What it buys you | Status |
 |-----------------------|------------------|--------|
 | Interpolation in shader | Sub-texel scrolling; less blocky than nearest-neighbor history. | Pending (Phase 4). Bilinear where format allows. |
-| Colormap control | Foobar-grade presets (gradient stops, SoX-style, etc.). | Partial: 7 CPU colormaps in `audio_to_png`; live shader only has viridis polynomial. GPU LUT pending (Phase 4). |
+| Colormap control | Gradient-stop presets (SoX-style or custom TOML). | Partial: 7 CPU colormaps in `audio_to_png`; live shader only has viridis polynomial. GPU LUT pending (Phase 4). |
 | Multi-pass or mip / blur | Cheap glow / temporal smear without more FFTs. | Pending (Phase 4). |
 
 ---
@@ -72,8 +71,8 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 
 | Feature / technique | What it buys you | Status |
 |-----------------------|------------------|--------|
-| Preset export/import | Match foobar workflow (named tunings). | Done: TOML profiles (`--config file.toml`); builtin presets (`--profile laptop|default|foobar-like`). |
-| CPU profiles | "Laptop" vs "foobar-like". | Done: Named profiles with distinct FFT/hop/smoothing/gamma settings. |
+| Preset export/import | Named TOML profiles for reproducible tunings. | Done: TOML profiles (`--config file.toml`); builtin presets (`--profile laptop|default|high-resolution`). |
+| CPU profiles | "laptop" vs "high-resolution" presets. | Done: Named profiles with distinct FFT/hop/smoothing/gamma settings. |
 | Regression captures | Know when a change breaks "look". | Pending: golden PNG generation exists via `audio_to_png`, CI not yet set up. |
 | Window management | KDE/Wayland window customization. | Done: `--no-decorations`, `--always-on-top`, `--always-on-bottom`, `--transparent`, `--position`. |
 | Layer-shell overlay | Desktop widget via Wayland layer-shell. | Done: `kde_overlay` binary using `iced_layershell`. |
@@ -98,7 +97,7 @@ This document lists **features and techniques** (not magic numbers) toward a **f
    Shader **bilinear interpolation** (R8Unorm filterable texture); GPU **colormap** as 256x1 RGBA8 LUT texture (all 15 builtins + custom TOML colormaps); **contrast** and **saturation** post-processing in fragment shader; `--contrast` / `--saturation` CLI flags.
 
 5. **Phase 5 -- Product / engineering** (complete)
-   **Profiles** and **preset files** (TOML); builtin presets (laptop, default, foobar-like); CLI overrides for all DSP parameters; `kde_overlay` binary; window management flags; `default_config.toml` reference config with full documentation; `presets/` directory with 8 ready-to-use configs (default, laptop, foobar-like, music-production, voice, bass-heavy, cqt-musical, minimal-dark, ultra-responsive).
+   **Profiles** and **preset files** (TOML); builtin presets (laptop, default, high-resolution); CLI overrides for all DSP parameters; `kde_overlay` binary; window management flags; `default_config.toml` reference config with full documentation; `presets/` directory with 9 ready-to-use configs (default, laptop, high-resolution, music-production, voice, bass-heavy, cqt-musical, minimal-dark, ultra-responsive).
 
 6. **Phase 6 -- Overlay / annotation**
    Per-line coloring; text label rendering (note names on overlay lines); multiple simultaneous overlay layers; toggling overlays via keybinds/menu at runtime. When this grows, extract `overlay_gpu.rs` from `spectrogram.rs`.
@@ -111,4 +110,4 @@ This document lists **features and techniques** (not magic numbers) toward a **f
 ## Notes for implementers
 
 - Prefer **correctness and resolution** over shaving CPU until a knob or profile says otherwise (see `.cursorrules`).
-- Exact foobar **defaults** are preset-dependent; bit-identical parity requires capturing **preset files** or metrics from a reference install -- do not assume one global numeric default.
+- Defaults are intentionally opinionated; capture golden metrics from a reference source if parity is required.

@@ -1,4 +1,4 @@
-# Building Hyprgram
+# Building vividspektrum
 
 ## Toolchain
 
@@ -68,12 +68,12 @@ Release binary:
 cargo build --release
 ```
 
-The `hyprgram` binary is under `target/release/hyprgram` (or `target/debug/hyprgram`).
+The `vividspektrum` binary is under `target/release/vividspektrum` (or `target/debug/vividspektrum`).
 
-With **`cargo run`**, pass binary flags **after `--`** so Cargo does not consume them. The package default binary is **`hyprgram`** (use **`--bin sine_preview`** for the tone preview):
+With **`cargo run`**, pass binary flags **after `--`** so Cargo does not consume them. The package default binary is **`vividspektrum`** (use **`--bin sine_preview`** for the tone preview):
 
 ```bash
-cargo run -p hyprgram -- --fft 32768 --hop 16384
+cargo run -p spektrum -- --fft 32768 --hop 16384
 ```
 
 ### Sine preview (no PipeWire, no Hyprland config)
@@ -81,7 +81,7 @@ cargo run -p hyprgram -- --fft 32768 --hop 16384
 To tune the spectrogram shader and DSP with a synthetic tone, run:
 
 ```bash
-cargo run -p hyprgram --bin sine_preview
+cargo run -p spektrum --bin sine_preview
 ```
 
 Optional flags match the main app where relevant, e.g. `--freq-hz 880 --width 900 --height 240`. No changes to `hyprland.conf` are required.
@@ -102,4 +102,4 @@ cargo clippy --workspace --all-targets
 
 ## Platform note
 
-Only **Linux** is supported for the full application. `hyprgram-core` may compile parts of the tree on other targets, but the `hyprgram` binary expects Linux, Wayland, and PipeWire at runtime.
+Only **Linux** is supported for the full application. `spektrum-core` may compile parts of the tree on other targets, but the `vividspektrum` binary expects Linux, Wayland, and PipeWire at runtime.

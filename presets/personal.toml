@@ -4,7 +4,7 @@
 #   - log_bins raised to 2048 (sharper frequency axis)
 #   - freq_smoothing_sigma raised to 1.5 (less blocky)
 #   - taller window (400px) to actually use the extra bins
-# Usage: cargo run --bin hyprgram -- --config presets/personal.toml --contrast 1.2 --saturation 1.1
+# Usage: cargo run --bin vividspektrum -- --config presets/personal.toml --contrast 1.2 --saturation 1.1
 
 [spectrum]
 window_size = 8192
@@ -27,3 +27,6 @@ freq_scale_exp = 0.6
 width = 800
 height = 1440
 scroll_right_to_left = true
+colormap = "nebula"
+contrast = 1.2
+saturation = 1.1

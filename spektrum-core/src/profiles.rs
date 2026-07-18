@@ -18,12 +18,18 @@ pub struct ProfileImage {
     pub scroll_right_to_left: bool,
     #[serde(default = "default_colormap")]
     pub colormap: String,
+    #[serde(default = "default_contrast")]
+    pub contrast: f32,
+    #[serde(default = "default_saturation")]
+    pub saturation: f32,
 }
 
 fn default_width() -> u32 { 800 }
 fn default_height() -> u32 { 200 }
 fn default_scroll() -> bool { true }
 fn default_colormap() -> String { "viridis".into() }
+fn default_contrast() -> f32 { 1.0 }
+fn default_saturation() -> f32 { 1.0 }
 
 impl Profile {
     pub fn to_image_config(&self) -> SpectrogramImageConfig {
@@ -34,6 +40,8 @@ impl Profile {
             height: img.map_or(200, |i| i.height),
             scroll_right_to_left: img.is_none_or(|i| i.scroll_right_to_left),
             colormap: img.map_or_else(|| "viridis".into(), |i| i.colormap.clone()),
+            contrast: img.map_or(1.0, |i| i.contrast),
+            saturation: img.map_or(1.0, |i| i.saturation),
         }
     }
 }
@@ -61,7 +69,7 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
             spectrum: SpectrumConfig::default(),
             image: None,
         }),
-        "foobar-like" => Some(Profile {
+        "high-resolution" => Some(Profile {
             spectrum: SpectrumConfig {
                 window_size: 32768,
                 hop_size: 128,
@@ -81,7 +89,7 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
 }
 
 pub fn builtin_profile_names() -> &'static [&'static str] {
-    &["laptop", "default", "foobar-like"]
+    &["laptop", "default", "high-resolution"]
 }
 
 #[cfg(test)]
@@ -109,8 +117,8 @@ mod tests {
     }
 
     #[test]
-    fn foobar_like_profile_has_large_window() {
-        let p = builtin_profile("foobar-like").unwrap();
+    fn high_resolution_profile_has_large_window() {
+        let p = builtin_profile("high-resolution").unwrap();
         assert_eq!(p.spectrum.window_size, 32768);
         assert_eq!(p.spectrum.log_bins, 2048);
     }
@@ -145,6 +153,8 @@ mod tests {
                 height: 400,
                 scroll_right_to_left: false,
                 colormap: "inferno".into(),
+                contrast: 1.0,
+                saturation: 1.0,
             }),
         };
         let cfg = profile.to_image_config();

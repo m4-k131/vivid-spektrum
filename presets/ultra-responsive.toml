@@ -1,7 +1,7 @@
 # Ultra-responsive profile — minimum latency, maximum temporal resolution
 # Small FFT window = less frequency detail but near-instant response.
 # Good for beat detection, transient-heavy music, live performance.
-# Usage: cargo run --bin hyprgram -- --config presets/ultra-responsive.toml
+# Usage: cargo run --bin vividspektrum -- --config presets/ultra-responsive.toml
 
 [spectrum]
 window_size = 2048

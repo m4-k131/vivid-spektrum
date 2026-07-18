@@ -1,13 +1,13 @@
-# hyprgram
+# vividspektrum
 
-A **foobar2000-class spectrogram visualizer** in Rust. Generate high-resolution spectrograms from audio — offline as PNG images, or live via PipeWire capture with GPU rendering on Linux/Wayland.
+A **spectrogram visualizer** in Rust. Generate high-resolution spectrograms from audio — offline as PNG images, or live via PipeWire capture with GPU rendering on Linux/Wayland.
 
 ## Quick start
 
 ### Offline PNG (Windows, macOS, Linux)
 
 ```bash
-cargo run --release -p hyprgram --bin audio_to_png -- song.mp3 spectrogram.png
+cargo run --release -p vividspektrum --bin audio_to_png -- song.mp3 spectrogram.png
 ```
 
 Supports WAV, MP3, FLAC, AAC, Ogg Vorbis.
@@ -15,7 +15,7 @@ Supports WAV, MP3, FLAC, AAC, Ogg Vorbis.
 ### Live window (Linux/Wayland only)
 
 ```bash
-cargo run --release --bin hyprgram
+cargo run --release --bin vividspektrum
 ```
 
 Captures system audio via PipeWire and renders a scrolling spectrogram in a GPU-accelerated Wayland window.
@@ -31,17 +31,17 @@ cargo run --release --bin kde_overlay -- --anchor bottom --layer background --he
 9 ready-to-use TOML configs in `presets/`:
 
 ```bash
-cargo run --bin hyprgram -- --config presets/foobar-like.toml
-cargo run --bin hyprgram -- --config presets/music-production.toml
-cargo run --bin hyprgram -- --config presets/bass-heavy.toml
-cargo run --bin hyprgram -- --list-presets   # see all available
+cargo run --bin vividspektrum -- --config presets/high-resolution.toml
+cargo run --bin vividspektrum -- --config presets/music-production.toml
+cargo run --bin vividspektrum -- --config presets/bass-heavy.toml
+cargo run --bin vividspektrum -- --list-presets   # see all available
 ```
 
 | Preset | FFT | Bins | Use case |
 |--------|-----|------|----------|
 | `default` | 8192 | 1024 | Balanced quality/performance |
 | `laptop` | 4096 | 256 | Low CPU, battery-friendly |
-| `foobar-like` | 32768 | 2048 | Maximum resolution |
+| `high-resolution` | 32768 | 2048 | Maximum resolution |
 | `music-production` | 16384 | 1536 | Mixing/mastering (centered, A-weighted) |
 | `voice` | 4096 | 512 | Speech/vocal range (80 Hz–8 kHz) |
 | `bass-heavy` | 16384 | 1024 | Sub-bass emphasis |
@@ -56,9 +56,9 @@ Or write your own — see `default_config.toml` for a fully documented reference
 15 builtin colormaps, or load a custom `.toml` file:
 
 ```bash
-cargo run --bin hyprgram -- --colormap inferno
-cargo run --bin hyprgram -- --colormap example_colormap.toml
-cargo run --bin hyprgram -- --list-colormaps  # see all available
+cargo run --bin vividspektrum -- --colormap inferno
+cargo run --bin vividspektrum -- --colormap example_colormap.toml
+cargo run --bin vividspektrum -- --list-colormaps  # see all available
 ```
 
 **Builtin**: viridis, inferno, magma, plasma, turbo, grayscale, heat, fire, ember, gold, cyanfire, rose, aurora, nebula, spectrum, ocean, sunset, gruvbox-dark, catppuccin-mocha, nord, tokyo-night (+ 5-stop variants)
@@ -70,10 +70,10 @@ Colormaps are uploaded as GPU LUT textures — zero CPU cost at runtime.
 Draw horizontal reference lines (staff lines, tuning notes, etc.) from TOML files:
 
 ```bash
-cargo run --bin hyprgram -- --overlay treble-bass
-cargo run --bin hyprgram -- --overlay guitar-standard
-cargo run --bin hyprgram -- --overlay a440
-cargo run --bin hyprgram -- --list-overlays  # see all available
+cargo run --bin vividspektrum -- --overlay treble-bass
+cargo run --bin vividspektrum -- --overlay guitar-standard
+cargo run --bin vividspektrum -- --overlay a440
+cargo run --bin vividspektrum -- --list-overlays  # see all available
 ```
 
 **Builtin**: treble, treble-bass, guitar-standard, a440
@@ -98,7 +98,7 @@ Drop any `.toml` in `overlays/` or pass a full path with `--overlay path/to/file
 Contrast and saturation are applied in the fragment shader:
 
 ```bash
-cargo run --bin hyprgram -- --contrast 1.3 --saturation 1.2
+cargo run --bin vividspektrum -- --contrast 1.3 --saturation 1.2
 ```
 
 | Flag | Default | Description |
@@ -158,8 +158,8 @@ cargo test --workspace   # 74 tests
 
 | Crate | Purpose |
 |-------|---------|
-| `hyprgram-core` | DSP library: STFT/CQT, colormaps, profiles, ring buffer, PipeWire |
-| `hyprgram` | Application: CLI, GPU shaders, live window, offline PNG, layer-shell overlay |
+| `spektrum-core` | DSP library: STFT/CQT, colormaps, profiles, ring buffer, PipeWire |
+| `vividspektrum` | Application: CLI, GPU shaders, live window, offline PNG, layer-shell overlay |
 
 ## Roadmap
 
