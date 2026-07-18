@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libpipewire-0.3-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binaries
+        run: cargo build --release --bins
+
+      - name: Package
+        run: |
+          mkdir -p hyprgram-linux
+          cp target/release/hyprgram hyprgram-linux/
+          cp target/release/kde_overlay hyprgram-linux/
+          cp target/release/audio_to_png hyprgram-linux/
+          cp target/release/sine_preview hyprgram-linux/
+          cp -r presets colormaps overlays hyprgram-linux/
+          tar czf hyprgram-linux-x86_64.tar.gz hyprgram-linux
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyprgram-linux-x86_64
+          path: hyprgram-linux-x86_64.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binaries
+        run: cargo build --release --bin hyprgram --bin audio_to_png
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path hyprgram-windows
+          Copy-Item target\release\hyprgram.exe hyprgram-windows\hyprgram.exe
+          Copy-Item target\release\audio_to_png.exe hyprgram-windows\audio_to_png.exe
+          Copy-Item -Recurse presets colormaps overlays hyprgram-windows
+          Compress-Archive -Path hyprgram-windows -DestinationPath hyprgram-windows-x86_64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyprgram-windows-x86_64
+          path: hyprgram-windows-x86_64.zip
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: hyprgram-linux-x86_64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: hyprgram-windows-x86_64
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            hyprgram-linux-x86_64.tar.gz
+            hyprgram-windows-x86_64.zip
+          generate_release_notes: true
