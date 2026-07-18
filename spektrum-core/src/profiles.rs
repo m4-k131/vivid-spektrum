@@ -92,6 +92,40 @@ pub fn builtin_profile_names() -> &'static [&'static str] {
     &["laptop", "default", "high-resolution"]
 }
 
+pub fn resolve_profile(name: &str) -> Result<Profile, CoreError> {
+    if let Some(p) = builtin_profile(name) {
+        return Ok(p);
+    }
+    let path = std::path::PathBuf::from(format!("presets/{name}.toml"));
+    if path.exists() {
+        load_profile(&path)
+    } else {
+        Err(CoreError::Dsp(format!("unknown profile '{name}'")))
+    }
+}
+
+pub fn list_profile_names() -> Vec<String> {
+    let mut names: Vec<String> = builtin_profile_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if let Ok(entries) = std::fs::read_dir("presets") {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.extension().is_some_and(|ext| ext == "toml") {
+                if let Some(s) = p.file_stem() {
+                    let s = s.to_string_lossy().into_owned();
+                    if !names.contains(&s) {
+                        names.push(s);
+                    }
+                }
+            }
+        }
+    }
+    names.sort();
+    names
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

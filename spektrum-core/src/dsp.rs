@@ -19,7 +19,7 @@ pub fn normalize_hop_size(window_size: usize, hop: usize) -> usize {
     h.clamp(1, max_h)
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WindowFunction {
     #[default]
@@ -27,6 +27,18 @@ pub enum WindowFunction {
     Hamming,
     Blackman,
     BlackmanHarris,
+}
+
+impl std::fmt::Display for WindowFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            WindowFunction::Hann => "Hann",
+            WindowFunction::Hamming => "Hamming",
+            WindowFunction::Blackman => "Blackman",
+            WindowFunction::BlackmanHarris => "Blackman-Harris",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 impl WindowFunction {
@@ -56,7 +68,7 @@ impl WindowFunction {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Transform {
     #[default]
@@ -64,7 +76,17 @@ pub enum Transform {
     Cqt,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+impl std::fmt::Display for Transform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Transform::Stft => "STFT",
+            Transform::Cqt => "CQT",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Weighting {
     #[default]
@@ -73,12 +95,33 @@ pub enum Weighting {
     C,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+impl std::fmt::Display for Weighting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Weighting::None => "None",
+            Weighting::A => "A-weighting",
+            Weighting::C => "C-weighting",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BandAggregation {
     #[default]
     Nearest,
     Triangular,
+}
+
+impl std::fmt::Display for BandAggregation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BandAggregation::Nearest => "Nearest",
+            BandAggregation::Triangular => "Triangular",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -196,6 +239,15 @@ impl SpectrumProcessor {
     }
     pub fn set_sample_rate(&mut self, sr: u32) {
         self.cfg.sample_rate = sr;
+    }
+    pub fn set_runtime_cfg(&mut self, cfg: &SpectrumConfig) {
+        self.cfg.hop_size = normalize_hop_size(self.cfg.window_size, cfg.hop_size);
+        self.cfg.db_floor = cfg.db_floor;
+        self.cfg.db_ceil = cfg.db_ceil;
+        self.cfg.freq_smoothing_sigma = cfg.freq_smoothing_sigma;
+        self.cfg.amplitude_gamma = cfg.amplitude_gamma;
+        self.cfg.temporal_alpha = cfg.temporal_alpha;
+        self.cfg.peak_hold_decay = cfg.peak_hold_decay;
     }
     pub fn log_bins(&self) -> usize {
         if self.cfg.transform == Transform::Cqt {

@@ -1,6 +1,6 @@
 use crate::Args;
 use spektrum::dev::{effective_spectrogram_history, SpectrogramDevConfig};
-use spektrum::settings::{SettingsMessage, SettingsState};
+use spektrum::settings::{DspSlider, SettingsMessage, SettingsState};
 use spektrum::spectrogram::SpectrogramProgram;
 use spektrum_core::{overlay, profiles, resolve_colormap, sample_ring_pair, SpectrumConfig, SpectrumProcessor};
 use iced::widget::{container, stack};
@@ -9,9 +9,15 @@ use iced::{Element, Event, Length, Size, Subscription, Task};
 use iced::keyboard;
 use iced::mouse;
 use std::collections::VecDeque;
-use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
+
+#[derive(Debug, Clone)]
+enum DspCommand {
+    Restart(SpectrumConfig, u32),
+    UpdateRuntime(SpectrumConfig),
+    SetHistory(u32),
+}
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -24,12 +30,10 @@ pub struct App {
     pub prog: SpectrogramProgram,
     settings: SettingsState,
     args: Args,
-    width: u32,
-    height: u32,
     spectrum: SpectrumConfig,
     fullscreen: bool,
     last_click: Option<Instant>,
-    restart_tx: mpsc::Sender<(SpectrumConfig, u32)>,
+    restart_tx: mpsc::Sender<DspCommand>,
     colormaps: Vec<String>,
     profiles: Vec<String>,
     overlays: Vec<String>,
@@ -49,17 +53,15 @@ impl App {
         let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
         let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
 
-        let width = args.width.unwrap_or(img.map_or(800, |i| i.width));
-        let height = args.height.unwrap_or(img.map_or(200, |i| i.height));
         let rtl = if args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
-        let history = effective_spectrogram_history(args.history, width, height, rtl);
+        let history = effective_spectrogram_history(args.history);
 
         let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
         let (producer, mut consumer) = sample_ring_pair((spectrum.sample_rate as usize) * 2);
         let _pw = spektrum_core::pipewire::spawn_capture_lockfree(args.target_object.clone(), producer);
 
-        let (restart_tx, restart_rx) = mpsc::channel::<(SpectrumConfig, u32)>();
+        let (restart_tx, restart_rx) = mpsc::channel::<DspCommand>();
         let initial_cfg = spectrum.clone();
         let debug_profile = args.debug_profile;
         std::thread::spawn(move || {
@@ -74,13 +76,23 @@ impl App {
             let mut proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
 
             loop {
-                while let Ok((new_cfg, new_history)) = restart_rx.try_recv() {
-                    cfg = new_cfg;
-                    proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
-                    pending_w.lock().unwrap().clear();
-                    backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
-                    if debug_profile {
-                        eprintln!("[profile] DSP restart: fft={} hop={} bins={}", cfg.window_size, cfg.hop_size, cfg.log_bins);
+                while let Ok(cmd) = restart_rx.try_recv() {
+                    match cmd {
+                        DspCommand::Restart(new_cfg, new_history) => {
+                            cfg = new_cfg;
+                            proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+                            backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
+                            if debug_profile {
+                                eprintln!("[profile] DSP restart: fft={} hop={} bins={}", cfg.window_size, cfg.hop_size, cfg.log_bins);
+                            }
+                        }
+                        DspCommand::UpdateRuntime(new_cfg) => {
+                            cfg = new_cfg;
+                            proc.set_runtime_cfg(&cfg);
+                        }
+                        DspCommand::SetHistory(new_history) => {
+                            backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
+                        }
                     }
                 }
 
@@ -158,10 +170,10 @@ impl App {
                 colormap_name,
                 profile_name,
                 args.overlay.clone().unwrap_or_else(|| "none".to_string()),
+                &spectrum,
+                history as f32,
             ),
             args,
-            width,
-            height,
             spectrum,
             fullscreen: false,
             last_click: None,
@@ -177,45 +189,19 @@ fn initial_profile(args: &Args) -> profiles::Profile {
     if let Some(path) = &args.config {
         profiles::load_profile(path).expect("failed to load config")
     } else if let Some(name) = &args.profile {
-        profiles::builtin_profile(name)
-            .unwrap_or_else(|| panic!("unknown profile '{}'. Available: {:?}", name, profiles::builtin_profile_names()))
+        profiles::resolve_profile(name)
+            .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
     } else {
         profiles::builtin_profile("default").unwrap()
     }
 }
 
 fn load_profile_by_name(name: &str) -> Option<profiles::Profile> {
-    if let Some(p) = profiles::builtin_profile(name) {
-        return Some(p);
-    }
-    let path = PathBuf::from(format!("presets/{}.toml", name));
-    if path.exists() {
-        profiles::load_profile(&path).ok()
-    } else {
-        None
-    }
+    profiles::resolve_profile(name).ok()
 }
 
 fn list_profile_names() -> Vec<String> {
-    let mut names: Vec<String> = profiles::builtin_profile_names()
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    if let Ok(entries) = std::fs::read_dir("presets") {
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.extension().is_some_and(|e| e == "toml") {
-                if let Some(s) = p.file_stem() {
-                    let s = s.to_string_lossy().into_owned();
-                    if !names.contains(&s) {
-                        names.push(s);
-                    }
-                }
-            }
-        }
-    }
-    names.sort();
-    names
+    profiles::list_profile_names()
 }
 
 fn list_overlay_names() -> Vec<String> {
@@ -301,6 +287,7 @@ fn apply_profile(app: &mut App, name: &str) {
     let Some(profile) = load_profile_by_name(name) else { return; };
     let mut spectrum = profile.spectrum.clone();
     apply_spectrum_overrides(&app.args, &mut spectrum);
+    spectrum.sample_rate = app.spectrum.sample_rate;
 
     let img = profile.image.as_ref();
     let colormap_name = app.args.colormap.as_deref()
@@ -311,9 +298,9 @@ fn apply_profile(app: &mut App, name: &str) {
     let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
 
     let rtl = if app.args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
-    let history = effective_spectrogram_history(app.args.history, app.width, app.height, rtl);
+    let history = app.settings.history.max(1.0) as u32;
 
-    app.restart_tx.send((spectrum.clone(), history)).ok();
+    app.restart_tx.send(DspCommand::Restart(spectrum.clone(), history)).ok();
 
     app.spectrum = spectrum;
     app.prog.bins = app.spectrum.log_bins as u32;
@@ -327,6 +314,7 @@ fn apply_profile(app: &mut App, name: &str) {
     app.settings.contrast = contrast;
     app.settings.saturation = saturation;
     app.settings.colormap = colormap_name.to_string();
+    app.settings.from_spectrum(&app.spectrum, history as f32);
 
     if app.settings.overlay != "none" {
         let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum);
@@ -356,6 +344,61 @@ fn apply_colormap(app: &mut App, name: &str) {
         app.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
         app.settings.colormap = name.to_string();
     }
+}
+
+fn apply_advanced(app: &mut App, field: DspSlider) {
+    if field == DspSlider::History {
+        app.prog.min_history = app.settings.history.max(1.0) as u32;
+        app.restart_tx.send(DspCommand::SetHistory(app.prog.min_history)).ok();
+        return;
+    }
+
+    let mut new = app.spectrum.clone();
+    copy_spectrum_field(&mut new, &app.settings.advanced, field);
+    app.spectrum = new;
+
+    if field.is_runtime() {
+        app.restart_tx.send(DspCommand::UpdateRuntime(app.spectrum.clone())).ok();
+    } else {
+        let history = app.prog.min_history;
+        app.restart_tx.send(DspCommand::Restart(app.spectrum.clone(), history)).ok();
+        app.prog.bins = app.spectrum.log_bins as u32;
+    }
+
+    if app.settings.overlay != "none" {
+        let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum);
+        app.prog.overlay_lines = lines;
+        app.prog.overlay_color = color;
+        app.prog.overlay_opacity = opacity;
+        app.prog.overlay_thickness = thickness;
+    }
+}
+
+fn copy_spectrum_field(dst: &mut SpectrumConfig, src: &SpectrumConfig, field: DspSlider) {
+    match field {
+        DspSlider::WindowSize => dst.window_size = src.window_size,
+        DspSlider::HopSize => dst.hop_size = src.hop_size,
+        DspSlider::LogBins => dst.log_bins = src.log_bins,
+        DspSlider::FMin => dst.f_min_hz = src.f_min_hz,
+        DspSlider::FMax => dst.f_max_hz = src.f_max_hz,
+        DspSlider::DbFloor => dst.db_floor = src.db_floor,
+        DspSlider::DbCeil => dst.db_ceil = src.db_ceil,
+        DspSlider::Smoothing => dst.freq_smoothing_sigma = src.freq_smoothing_sigma,
+        DspSlider::Gamma => dst.amplitude_gamma = src.amplitude_gamma,
+        DspSlider::TemporalAlpha => dst.temporal_alpha = src.temporal_alpha,
+        DspSlider::PeakDecay => dst.peak_hold_decay = src.peak_hold_decay,
+        DspSlider::CqtBins => dst.cqt_bins_per_octave = src.cqt_bins_per_octave,
+        DspSlider::FreqScaleExp => dst.freq_scale_exp = src.freq_scale_exp,
+        DspSlider::History => {}
+    }
+}
+
+fn restart_dsp(app: &mut App) {
+    let history = app.prog.min_history;
+    app.restart_tx.send(DspCommand::Restart(app.spectrum.clone(), history)).ok();
+    app.prog.bins = app.spectrum.log_bins as u32;
+    let overlay = app.settings.overlay.clone();
+    apply_overlay(app, &overlay);
 }
 
 fn update(app: &mut App, message: Message) -> Task<Message> {
@@ -411,6 +454,33 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 SettingsMessage::SetColormap(name) => apply_colormap(app, &name),
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
                 SettingsMessage::SetOverlay(name) => apply_overlay(app, &name),
+                SettingsMessage::AdvancedSlider(field, value) => app.settings.set(field, value),
+                SettingsMessage::AdvancedSliderRelease(field) => apply_advanced(app, field),
+                SettingsMessage::SetWindowFn(w) => {
+                    app.settings.advanced.window_fn = w;
+                    app.spectrum.window_fn = w;
+                    restart_dsp(app);
+                }
+                SettingsMessage::SetBandAggregation(a) => {
+                    app.settings.advanced.band_aggregation = a;
+                    app.spectrum.band_aggregation = a;
+                    restart_dsp(app);
+                }
+                SettingsMessage::SetWeighting(w) => {
+                    app.settings.advanced.weighting = w;
+                    app.spectrum.weighting = w;
+                    restart_dsp(app);
+                }
+                SettingsMessage::SetTransform(t) => {
+                    app.settings.advanced.transform = t;
+                    app.spectrum.transform = t;
+                    restart_dsp(app);
+                }
+                SettingsMessage::SetCentered(c) => {
+                    app.settings.advanced.centered = c;
+                    app.spectrum.centered = c;
+                    restart_dsp(app);
+                }
             }
             Task::none()
         }
@@ -433,7 +503,11 @@ fn view(app: &App) -> Element<'_, Message> {
     let panel: Element<'_, Message> = container(menu)
         .width(Length::Fill)
         .height(Length::Fill)
-        .align_x(iced::alignment::Horizontal::Right)
+        .align_x(if app.prog.dev.scroll_right_to_left {
+            iced::alignment::Horizontal::Left
+        } else {
+            iced::alignment::Horizontal::Right
+        })
         .into();
 
     stack![spectrogram, panel].into()

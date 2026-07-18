@@ -23,8 +23,8 @@ impl App {
         let profile = if let Some(path) = &args.config {
             profiles::load_profile(path).expect("failed to load config")
         } else if let Some(name) = &args.profile {
-            profiles::builtin_profile(name)
-                .unwrap_or_else(|| panic!("unknown profile '{}'. Available: {:?}", name, profiles::builtin_profile_names()))
+            profiles::resolve_profile(name)
+                .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
         } else {
             profiles::builtin_profile("default").unwrap()
         };
@@ -83,7 +83,7 @@ impl App {
         let height = args.height.unwrap_or(img.map_or(200, |i| i.height));
         let rtl = if args.legacy_vertical_scroll { false } else { img.map_or(true, |i| i.scroll_right_to_left) };
 
-        let history = effective_spectrogram_history(args.history, width, height, rtl);
+        let history = effective_spectrogram_history(args.history);
         let backlog_cap = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
         let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();

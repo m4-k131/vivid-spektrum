@@ -111,24 +111,9 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if args.list_presets {
-        println!("Available preset configs (use with --config):");
-        for name in spektrum_core::profiles::builtin_profile_names() {
+        println!("Available preset configs:");
+        for name in spektrum_core::profiles::list_profile_names() {
             println!("  --profile {}", name);
-        }
-        let presets_dir = std::path::Path::new("presets");
-        if presets_dir.is_dir() {
-            println!("\nPreset files in presets/:");
-            if let Ok(entries) = std::fs::read_dir(presets_dir) {
-                let mut names: Vec<String> = entries
-                    .filter_map(|e| e.ok())
-                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "toml"))
-                    .map(|e| e.path().display().to_string())
-                    .collect();
-                names.sort();
-                for name in names {
-                    println!("  --config {}", name);
-                }
-            }
         }
         return Ok(());
     }

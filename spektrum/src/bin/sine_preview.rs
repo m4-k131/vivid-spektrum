@@ -81,7 +81,7 @@ struct Preview {
 impl Preview {
     fn new(args: PreviewArgs) -> Self {
         let rtl = !args.legacy_vertical_scroll;
-        let history = effective_spectrogram_history(args.history, args.width, args.height, rtl);
+        let history = effective_spectrogram_history(args.history);
         let cfg = SpectrumConfig {
             window_size: args.window,
             hop_size: args.hop,

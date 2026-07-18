@@ -64,6 +64,10 @@ struct Args {
     saturation: f32,
     #[arg(long, help = "Set PNG width from audio duration (one column = one pixel)")]
     auto_width: bool,
+    #[arg(long, help = "Render from timestamp (mm:ss). If omitted, starts at 0.")]
+    from: Option<String>,
+    #[arg(long, help = "Render to timestamp (mm:ss). If omitted, renders to end.")]
+    to: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -75,8 +79,8 @@ fn main() -> Result<()> {
         profiles::load_profile(path)?
     } else if let Some(name) = &args.profile {
         eprintln!("Loading profile: {}", name);
-        profiles::builtin_profile(name)
-            .with_context(|| format!("unknown profile '{}'. Available: {:?}", name, profiles::builtin_profile_names()))?
+        profiles::resolve_profile(name)
+            .with_context(|| format!("unknown profile '{}'. Available: {:?}", name, profiles::list_profile_names()))?
     } else {
         profiles::builtin_profile("default").unwrap()
     };
@@ -147,18 +151,30 @@ fn main() -> Result<()> {
     eprintln!("[1/3] Decoding audio...");
     let (samples, sample_rate) = decode_mono_f32(&args.input)?;
     let decode_elapsed = decode_start.elapsed();
-    let duration_secs = samples.len() as f64 / sample_rate as f64;
-    eprintln!("       {} samples @ {} Hz = {:.1}s audio", samples.len(), sample_rate, duration_secs);
+    let total_duration_secs = samples.len() as f64 / sample_rate as f64;
+    eprintln!("       {} samples @ {} Hz = {:.1}s audio", samples.len(), sample_rate, total_duration_secs);
     eprintln!("       decode took {:.2}s", decode_elapsed.as_secs_f64());
     eprintln!();
 
     image_config.spectrum.sample_rate = sample_rate;
+
+    let from_sample = args.from.as_ref().map(|s| parse_timestamp(s, sample_rate)).transpose()?.unwrap_or(0).min(samples.len());
+    let to_sample = args.to.as_ref().map(|s| parse_timestamp(s, sample_rate)).transpose()?.unwrap_or(samples.len()).min(samples.len());
+    if from_sample > to_sample {
+        anyhow::bail!("--from timestamp is after --to timestamp");
+    }
+    let samples = &samples[from_sample..to_sample];
+    let range_duration_secs = samples.len() as f64 / sample_rate as f64;
+    if from_sample != 0 || to_sample != samples.len() {
+        eprintln!("       selected range: {} samples = {:.1}s (from {} to {})", samples.len(), range_duration_secs, from_sample, to_sample);
+    }
+
     let w = image_config.spectrum.window_size;
     let h = image_config.spectrum.hop_size;
     let num_windows = if samples.len() >= w { (samples.len() - w) / h + 1 } else { 0 };
     eprintln!("[2/3] Computing spectrogram ({} windows)...", num_windows);
     let fft_start = Instant::now();
-    let columns = samples_to_spectrogram(&samples, image_config.spectrum.clone())?;
+    let columns = samples_to_spectrogram(samples, image_config.spectrum.clone())?;
     let fft_elapsed = fft_start.elapsed();
     eprintln!("       {} columns in {:.2}s ({:.0} windows/s)", columns.len(), fft_elapsed.as_secs_f64(), columns.len() as f64 / fft_elapsed.as_secs_f64().max(0.001));
     eprintln!();
@@ -185,6 +201,21 @@ fn main() -> Result<()> {
     let total_elapsed = total_start.elapsed();
     eprintln!("Done. Total: {:.2}s  ->  {}", total_elapsed.as_secs_f64(), args.output.display());
     Ok(())
+}
+
+fn parse_timestamp(s: &str, sample_rate: u32) -> Result<usize> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 2 {
+        anyhow::bail!("timestamp must be mm:ss, got '{}'", s);
+    }
+    let minutes: usize = parts[0]
+        .parse()
+        .with_context(|| format!("invalid minutes in timestamp '{}'", s))?;
+    let seconds: usize = parts[1]
+        .parse()
+        .with_context(|| format!("invalid seconds in timestamp '{}'", s))?;
+    let total = minutes * 60 + seconds;
+    Ok(total * sample_rate as usize)
 }
 
 fn decode_mono_f32(path: &Path) -> Result<(Vec<f32>, u32)> {
