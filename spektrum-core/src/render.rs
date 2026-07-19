@@ -50,6 +50,12 @@ pub fn samples_to_spectrogram(
         processor.push_samples(samples, &mut columns);
         return Ok(columns);
     }
+    if spectrum.temporal_alpha > 0.0 || spectrum.peak_hold_decay > 0.0 {
+        let mut processor = SpectrumProcessor::new(spectrum)?;
+        let mut columns = Vec::new();
+        processor.push_samples(samples, &mut columns);
+        return Ok(columns);
+    }
     let num_windows = (n - w) / h + 1;
     let num_threads = rayon::current_num_threads().max(1);
     let windows_per_chunk = num_windows.div_ceil(num_threads);
@@ -93,8 +99,8 @@ pub fn render_spectrogram_png_with_grid<P: AsRef<Path>>(
     let width = config.width.max(1);
     let height = config.height.max(1);
     let bins = config.spectrum.log_bins.max(1);
-    let cmap = colormap::builtin_colormap(&config.colormap)
-        .unwrap_or_else(colormap::default_colormap);
+    let cmap = colormap::resolve_colormap(&config.colormap)
+        .unwrap_or_else(|_| colormap::default_colormap());
     let lut = cmap.build_lut(256);
     let mut img = ImageBuffer::<Rgb<u8>, Vec<u8>>::new(width, height);
     for y in 0..height {

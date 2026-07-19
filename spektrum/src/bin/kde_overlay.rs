@@ -169,6 +169,7 @@ mod inner {
             pending_spectra,
             bins: bins as u32,
             min_history: history,
+            paused: false,
             dev: SpectrogramDevConfig { scroll_right_to_left: rtl },
             colormap_lut: Arc::new(default_colormap().build_lut_rgba(256)),
             contrast: 1.0,

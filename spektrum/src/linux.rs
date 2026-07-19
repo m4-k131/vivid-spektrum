@@ -17,6 +17,7 @@ enum DspCommand {
     Restart(SpectrumConfig, u32),
     UpdateRuntime(SpectrumConfig),
     SetHistory(u32),
+    SetPaused(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +107,7 @@ impl App {
             let mut cfg = initial_cfg;
             let mut backlog_cap: usize = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
             let mut proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+            let mut paused = false;
 
             loop {
                 while let Ok(cmd) = restart_rx.try_recv() {
@@ -125,12 +127,21 @@ impl App {
                         DspCommand::SetHistory(new_history) => {
                             backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
                         }
+                        DspCommand::SetPaused(value) => {
+                            paused = value;
+                            if !paused {
+                                proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+                            }
+                        }
                     }
                 }
 
                 let n = consumer.pop_into(&mut scratch);
                 if n == 0 {
                     std::thread::sleep(Duration::from_micros(500));
+                    continue;
+                }
+                if paused {
                     continue;
                 }
                 let t0 = Instant::now();
@@ -185,6 +196,7 @@ impl App {
                 pending_spectra,
                 bins: spectrum.log_bins as u32,
                 min_history: history,
+                paused: false,
                 dev: SpectrogramDevConfig { scroll_right_to_left: rtl },
                 colormap_lut,
                 contrast,
@@ -506,6 +518,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 keyboard::Key::Named(keyboard::key::Named::Escape) => {
                     app.settings.close();
+                }
+                keyboard::Key::Named(keyboard::key::Named::Space) => {
+                    app.prog.paused = !app.prog.paused;
+                    app.prog.pending_spectra.lock().unwrap().clear();
+                    app.restart_tx.send(DspCommand::SetPaused(app.prog.paused)).ok();
                 }
                 _ => {}
             }

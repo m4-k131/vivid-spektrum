@@ -111,6 +111,7 @@ pub struct SpectrogramProgram {
     pub pending_spectra: Arc<Mutex<VecDeque<Vec<f32>>>>,
     pub bins: u32,
     pub min_history: u32,
+    pub paused: bool,
     pub dev: SpectrogramDevConfig,
     pub colormap_lut: Arc<Vec<[u8; 4]>>,
     pub contrast: f32,
@@ -126,6 +127,7 @@ pub struct SpectrogramPrimitive {
     pub pending_spectra: Arc<Mutex<VecDeque<Vec<f32>>>>,
     pub bins: u32,
     pub history: u32,
+    pub paused: bool,
     pub dev: SpectrogramDevConfig,
     pub colormap_lut: Arc<Vec<[u8; 4]>>,
     pub contrast: f32,
@@ -159,6 +161,7 @@ pub struct SpectrogramGpu {
     bind_group: wgpu::BindGroup,
     pipeline: wgpu::RenderPipeline,
     write_row: u32,
+    scroll: f32,
     prof_last_report: Instant,
     prof_prepare_us: u64,
     prof_cols_uploaded: u64,
@@ -350,6 +353,7 @@ impl shader::Pipeline for SpectrogramGpu {
             bind_group,
             pipeline,
             write_row: 0,
+            scroll: 0.0,
             prof_last_report: Instant::now(),
             prof_prepare_us: 0,
             prof_cols_uploaded: 0,
@@ -425,68 +429,72 @@ impl shader::Primitive for SpectrogramPrimitive {
             pipeline.write_row = 0;
         }
         let prev_write_row = pipeline.write_row;
-        let mut row_u8 = vec![0u8; w as usize];
         let mut last_y: Option<u32> = None;
-        loop {
-            let col = { self.pending_spectra.lock().unwrap().pop_front() };
-            let Some(col) = col else { break };
-            let n = col.len().min(row_u8.len());
-            for (dst, &src) in row_u8[..n].iter_mut().zip(&col[..n]) {
-                *dst = (src.clamp(0.0, 1.0) * 255.0) as u8;
+        if self.paused {
+            self.pending_spectra.lock().unwrap().clear();
+        } else {
+            let mut row_u8 = vec![0u8; w as usize];
+            loop {
+                let col = { self.pending_spectra.lock().unwrap().pop_front() };
+                let Some(col) = col else { break };
+                let n = col.len().min(row_u8.len());
+                for (dst, &src) in row_u8[..n].iter_mut().zip(&col[..n]) {
+                    *dst = (src.clamp(0.0, 1.0) * 255.0) as u8;
+                }
+                for dst in row_u8[n..].iter_mut() {
+                    *dst = 0;
+                }
+                let y = pipeline.write_row % h;
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &pipeline.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d { x: 0, y, z: 0 },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &row_u8,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(w),
+                        rows_per_image: Some(1),
+                    },
+                    wgpu::Extent3d {
+                        width: w,
+                        height: 1,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                pipeline.write_row = pipeline.write_row.wrapping_add(1);
+                last_y = Some(y);
             }
-            for dst in row_u8[n..].iter_mut() {
-                *dst = 0;
-            }
-            let y = pipeline.write_row % h;
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &pipeline.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d { x: 0, y, z: 0 },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &row_u8,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(w),
-                    rows_per_image: Some(1),
-                },
-                wgpu::Extent3d {
-                    width: w,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-            );
-            pipeline.write_row = pipeline.write_row.wrapping_add(1);
-            last_y = Some(y);
         }
         if let Some(y) = last_y {
-            let scroll = (y as f32 + 1.0) / (h as f32);
-            let mut overlay_a = [0.0f32; 4];
-            let mut overlay_b = [0.0f32; 4];
-            let mut overlay_c = [0.0f32; 4];
-            let count = self.overlay_lines.len().min(12);
-            for (i, &v) in self.overlay_lines.iter().take(12).enumerate() {
-                if i < 4 { overlay_a[i] = v; }
-                else if i < 8 { overlay_b[i - 4] = v; }
-                else { overlay_c[i - 8] = v; }
-            }
-            let u = Uniforms {
-                scroll,
-                tex_w: w as f32,
-                tex_h: h as f32,
-                mode: if self.dev.scroll_right_to_left { 0 } else { 1 },
-                contrast: self.contrast,
-                saturation: self.saturation,
-                overlay_count: count as u32,
-                overlay_thickness: self.overlay_thickness,
-                overlay_color: [self.overlay_color[0], self.overlay_color[1], self.overlay_color[2], self.overlay_opacity],
-                overlay_a,
-                overlay_b,
-                overlay_c,
-            };
-            queue.write_buffer(&pipeline.uniform, 0, bytemuck::bytes_of(&u));
+            pipeline.scroll = (y as f32 + 1.0) / (h as f32);
         }
+        let mut overlay_a = [0.0f32; 4];
+        let mut overlay_b = [0.0f32; 4];
+        let mut overlay_c = [0.0f32; 4];
+        let count = self.overlay_lines.len().min(12);
+        for (i, &v) in self.overlay_lines.iter().take(12).enumerate() {
+            if i < 4 { overlay_a[i] = v; }
+            else if i < 8 { overlay_b[i - 4] = v; }
+            else { overlay_c[i - 8] = v; }
+        }
+        let u = Uniforms {
+            scroll: pipeline.scroll,
+            tex_w: w as f32,
+            tex_h: h as f32,
+            mode: if self.dev.scroll_right_to_left { 0 } else { 1 },
+            contrast: self.contrast,
+            saturation: self.saturation,
+            overlay_count: count as u32,
+            overlay_thickness: self.overlay_thickness,
+            overlay_color: [self.overlay_color[0], self.overlay_color[1], self.overlay_color[2], self.overlay_opacity],
+            overlay_a,
+            overlay_b,
+            overlay_c,
+        };
+        queue.write_buffer(&pipeline.uniform, 0, bytemuck::bytes_of(&u));
         if self.debug_profile {
             let cols_this_frame = if last_y.is_some() { pipeline.write_row.wrapping_sub(prev_write_row) as u64 } else { 0 };
             pipeline.prof_prepare_us += prepare_start.elapsed().as_micros() as u64;
@@ -542,6 +550,7 @@ impl<Message: 'static> shader::Program<Message> for SpectrogramProgram {
             pending_spectra: self.pending_spectra.clone(),
             bins: self.bins,
             history,
+            paused: self.paused,
             dev: self.dev,
             colormap_lut: self.colormap_lut.clone(),
             contrast: self.contrast,
