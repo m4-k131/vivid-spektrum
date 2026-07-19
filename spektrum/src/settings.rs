@@ -155,6 +155,7 @@ pub enum SettingsMessage {
     SetColormap(String),
     SetProfile(String),
     SetOverlay(String),
+    SetSource(String),
     AdvancedSlider(DspSlider, f32),
     AdvancedSliderRelease(DspSlider),
     SetWindowFn(WindowFunction),
@@ -171,6 +172,7 @@ pub struct SettingsState {
     pub colormap: String,
     pub profile: String,
     pub overlay: String,
+    pub source: String,
     pub width: f32,
     pub advanced: SpectrumConfig,
     pub history: f32,
@@ -184,6 +186,7 @@ impl SettingsState {
         colormap: impl Into<String>,
         profile: impl Into<String>,
         overlay: impl Into<String>,
+        source: impl Into<String>,
         spectrum: &SpectrumConfig,
         history: f32,
     ) -> Self {
@@ -194,6 +197,7 @@ impl SettingsState {
             colormap: colormap.into(),
             profile: profile.into(),
             overlay: overlay.into(),
+            source: source.into(),
             width: 280.0,
             advanced: spectrum.clone(),
             history,
@@ -256,6 +260,7 @@ impl SettingsState {
         colormaps: &'a [String],
         profiles: &'a [String],
         overlays: &'a [String],
+        sources: &'a [String],
     ) -> Element<'a, SettingsMessage> {
         let header = row![
             text("vividspektrum").size(20),
@@ -285,6 +290,10 @@ impl SettingsState {
             label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning)."),
             pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay),
             text("Advanced").size(14),
+            label_row("Audio source", "PipeWire/PulseAudio capture source. Microphones and output monitor sources are listed."),
+            pick_list(sources, Some(self.source.clone()), SettingsMessage::SetSource)
+                .text_size(11)
+                .width(Length::Fill),
             label_row("Profile preset", "Load a saved preset. You can still move the sliders afterwards."),
             pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile),
             label_row("Window function", "Time-domain window applied before FFT. Blackman-Harris reduces leakage."),

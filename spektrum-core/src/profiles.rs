@@ -25,7 +25,7 @@ pub struct ProfileImage {
 }
 
 fn default_width() -> u32 { 800 }
-fn default_height() -> u32 { 200 }
+fn default_height() -> u32 { 800 }
 fn default_scroll() -> bool { true }
 fn default_colormap() -> String { "viridis".into() }
 fn default_contrast() -> f32 { 1.0 }
@@ -37,7 +37,7 @@ impl Profile {
         SpectrogramImageConfig {
             spectrum: self.spectrum.clone(),
             width: img.map_or(800, |i| i.width),
-            height: img.map_or(200, |i| i.height),
+            height: img.map_or(800, |i| i.height),
             scroll_right_to_left: img.is_none_or(|i| i.scroll_right_to_left),
             colormap: img.map_or_else(|| "viridis".into(), |i| i.colormap.clone()),
             contrast: img.map_or(1.0, |i| i.contrast),
@@ -173,7 +173,7 @@ mod tests {
         };
         let cfg = profile.to_image_config();
         assert_eq!(cfg.width, 800);
-        assert_eq!(cfg.height, 200);
+        assert_eq!(cfg.height, 800);
         assert_eq!(cfg.colormap, "viridis");
         assert!(cfg.scroll_right_to_left);
     }

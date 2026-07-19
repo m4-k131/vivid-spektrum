@@ -149,8 +149,8 @@
 # width = 800
 
 # Window height in pixels.
-# Default: 200
-# height = 200
+# Default: 800
+# height = 800
 
 # Scroll direction.
 #   true  = spectrogram scrolls right-to-left (newest on right edge)

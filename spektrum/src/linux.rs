@@ -8,7 +8,7 @@ use iced::widget::shader::Shader;
 use iced::{Element, Event, Length, Size, Subscription, Task};
 use iced::keyboard;
 use iced::mouse;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -37,6 +37,8 @@ pub struct App {
     colormaps: Vec<String>,
     profiles: Vec<String>,
     overlays: Vec<String>,
+    sources: Vec<String>,
+    source_targets: HashMap<String, String>,
 }
 
 impl App {
@@ -55,11 +57,30 @@ impl App {
 
         let rtl = if args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
         let history = effective_spectrogram_history(args.history);
+        let capture_target = args.target_object.clone()
+            .or_else(spektrum_core::pipewire::default_pulse_output_monitor)
+            .or_else(spektrum_core::pipewire::default_pulse_source);
+        let mut source_targets = HashMap::new();
+        let mut sources = Vec::new();
+        for (index, target) in spektrum_core::pipewire::pulse_sources().into_iter().enumerate() {
+            let label = source_label(index, &target);
+            source_targets.insert(label.clone(), target);
+            sources.push(label);
+        }
+        let source = capture_target.as_deref()
+            .and_then(|target| source_targets.iter().find_map(|(label, value)| (value == target).then(|| label.clone())))
+            .unwrap_or_else(|| {
+                let target = capture_target.clone().unwrap_or_else(|| "default input".to_string());
+                let label = source_label(sources.len(), &target);
+                source_targets.insert(label.clone(), target);
+                sources.push(label.clone());
+                label
+            });
 
         let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
         let (producer, mut consumer) = sample_ring_pair((spectrum.sample_rate as usize) * 2);
-        let _pw = spektrum_core::pipewire::spawn_capture_lockfree(args.target_object.clone(), producer);
+        let _pw = spektrum_core::pipewire::spawn_capture_lockfree(capture_target, producer);
 
         let (restart_tx, restart_rx) = mpsc::channel::<DspCommand>();
         let initial_cfg = spectrum.clone();
@@ -170,6 +191,7 @@ impl App {
                 colormap_name,
                 profile_name,
                 args.overlay.clone().unwrap_or_else(|| "none".to_string()),
+                source,
                 &spectrum,
                 history as f32,
             ),
@@ -181,6 +203,8 @@ impl App {
             colormaps,
             profiles,
             overlays,
+            sources,
+            source_targets,
         }
     }
 }
@@ -202,6 +226,14 @@ fn load_profile_by_name(name: &str) -> Option<profiles::Profile> {
 
 fn list_profile_names() -> Vec<String> {
     profiles::list_profile_names()
+}
+
+fn source_label(index: usize, source: &str) -> String {
+    let kind = if source.ends_with(".monitor") { "Output" } else { "Input" };
+    let mut text = source.chars();
+    let abbreviated: String = text.by_ref().take(32).collect();
+    let suffix = if text.next().is_some() { "…" } else { "" };
+    format!("{kind} {} · {abbreviated}{suffix}", index + 1)
 }
 
 fn list_overlay_names() -> Vec<String> {
@@ -454,6 +486,15 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 SettingsMessage::SetColormap(name) => apply_colormap(app, &name),
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
                 SettingsMessage::SetOverlay(name) => apply_overlay(app, &name),
+                SettingsMessage::SetSource(source) => {
+                    let Some(target) = app.source_targets.get(&source) else {
+                        return Task::none();
+                    };
+                    match spektrum_core::pipewire::move_capture_to_pulse_source(target) {
+                        Ok(()) => app.settings.source = source,
+                        Err(e) => eprintln!("failed to change audio source: {e}"),
+                    }
+                }
                 SettingsMessage::AdvancedSlider(field, value) => app.settings.set(field, value),
                 SettingsMessage::AdvancedSliderRelease(field) => apply_advanced(app, field),
                 SettingsMessage::SetWindowFn(w) => {
@@ -498,7 +539,7 @@ fn view(app: &App) -> Element<'_, Message> {
         return spectrogram.into();
     }
 
-    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.overlays)
+    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.overlays, &app.sources)
         .map(Message::Settings);
     let panel: Element<'_, Message> = container(menu)
         .width(Length::Fill)
@@ -530,7 +571,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     };
     let img = profile_for_size.as_ref().and_then(|p| p.image.as_ref());
     let win_w = args.width.unwrap_or(img.map_or(800, |i| i.width));
-    let win_h = args.height.unwrap_or(img.map_or(200, |i| i.height));
+    let win_h = args.height.unwrap_or(img.map_or(800, |i| i.height));
     let size = Size::new(win_w as f32, win_h as f32);
     let level = if args.always_on_top {
         iced::window::Level::AlwaysOnTop
