@@ -9,7 +9,7 @@ mod windows;
 #[derive(Parser, Debug, Clone)]
 #[command(name = "vividspektrum", about = "PipeWire live spectrogram (Wayland window)")]
 pub struct Args {
-    #[arg(long, help = "PipeWire target object id or name for capture stream")]
+    #[arg(long, help = "PipeWire/PulseAudio source name or object id (a .monitor source captures output audio)")]
     pub target_object: Option<String>,
     #[arg(long, help = "Built-in profile: laptop, default, high-resolution")]
     pub profile: Option<String>,

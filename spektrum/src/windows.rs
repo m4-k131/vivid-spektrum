@@ -80,7 +80,7 @@ impl App {
         let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
         let img = profile.image.as_ref();
         let width = args.width.unwrap_or(img.map_or(800, |i| i.width));
-        let height = args.height.unwrap_or(img.map_or(200, |i| i.height));
+        let height = args.height.unwrap_or(img.map_or(800, |i| i.height));
         let rtl = if args.legacy_vertical_scroll { false } else { img.map_or(true, |i| i.scroll_right_to_left) };
 
         let history = effective_spectrogram_history(args.history);
@@ -114,6 +114,7 @@ impl App {
                 pending_spectra,
                 bins: spectrum.log_bins as u32,
                 min_history: history,
+                paused: false,
                 dev: SpectrogramDevConfig {
                     scroll_right_to_left: rtl,
                 },

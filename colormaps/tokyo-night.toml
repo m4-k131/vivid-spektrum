@@ -1,55 +1,31 @@
-name = "tokyo-night"
+name = "tokyo-night-5"
 
 [[stops]]
-position = 0.000
+position = 0.0
 r = 0.102
 g = 0.110
 b = 0.180
 
 [[stops]]
-position = 0.125
-r = 0.149
-g = 0.165
-b = 0.290
-
-[[stops]]
-position = 0.250
+position = 0.25
 r = 0.247
 g = 0.286
 b = 0.490
 
 [[stops]]
-position = 0.375
-r = 0.384
-g = 0.420
-b = 0.643
-
-[[stops]]
-position = 0.500
+position = 0.5
 r = 0.545
 g = 0.553
 b = 0.753
 
 [[stops]]
-position = 0.625
-r = 0.698
-g = 0.667
-b = 0.816
-
-[[stops]]
-position = 0.750
+position = 0.75
 r = 0.816
 g = 0.733
 b = 0.851
 
 [[stops]]
-position = 0.875
-r = 0.898
-g = 0.820
-b = 0.890
-
-[[stops]]
-position = 1.000
+position = 1.0
 r = 0.757
 g = 0.875
 b = 0.980

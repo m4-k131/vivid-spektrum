@@ -42,8 +42,10 @@ struct Args {
     temporal_alpha: Option<f32>,
     #[arg(long = "peak-decay", help = "Override: peak hold decay per frame (0=off, 0.5-0.9 typical)")]
     peak_decay: Option<f32>,
-    #[arg(long = "colormap", help = "Override: colormap name (viridis, inferno, magma, plasma, turbo, grayscale, heat, fire, ember, gold, cyanfire, rose, aurora, nebula, spectrum, ocean, sunset, gruvbox-dark, gruvbox-dark-5, catppuccin-mocha, catppuccin-mocha-5, nord, nord-5, tokyo-night, tokyo-night-5) or path to a .toml file")]
+    #[arg(long = "colormap", help = "Override: colormap name or path to a .toml file")]
     colormap: Option<String>,
+    #[arg(long, help = "Render one PNG for every available colormap, appending each colormap name to the output filename")]
+    all_colormaps: bool,
     #[arg(long = "weighting", help = "Override: frequency weighting (none, a, c)")]
     weighting: Option<String>,
     #[arg(long = "transform", help = "Override: transform (stft, cqt)")]
@@ -58,12 +60,16 @@ struct Args {
     legacy_vertical_scroll: bool,
     #[arg(long, help = "Path to JSON scale config for frequency grid overlay")]
     scale: Option<PathBuf>,
-    #[arg(long, default_value_t = 1.0, help = "Output contrast (>1 = more punch, 0.5 = flatter)")]
-    contrast: f32,
-    #[arg(long, default_value_t = 1.0, help = "Output saturation (>1 = vivid, 0 = grayscale)")]
-    saturation: f32,
-    #[arg(long, help = "Set PNG width from audio duration (one column = one pixel)")]
+    #[arg(long, help = "Override output contrast (>1 = more punch, 0.5 = flatter)")]
+    contrast: Option<f32>,
+    #[arg(long, help = "Override output saturation (>1 = vivid, 0 = grayscale)")]
+    saturation: Option<f32>,
+    #[arg(long, help = "Set PNG width from audio duration (one STFT column = one pixel)")]
     auto_width: bool,
+    #[arg(long, help = "Scale PNG width to match the profile's live viewport: columns × image width ÷ waterfall history")]
+    match_live_width: bool,
+    #[arg(long, help = "Actual live viewport width (px) used with --match-live-width; defaults to the profile image width")]
+    live_width: Option<u32>,
     #[arg(long, help = "Render from timestamp (mm:ss). If omitted, starts at 0.")]
     from: Option<String>,
     #[arg(long, help = "Render to timestamp (mm:ss). If omitted, renders to end.")]
@@ -85,6 +91,10 @@ fn main() -> Result<()> {
         profiles::builtin_profile("default").unwrap()
     };
 
+    if args.auto_width && args.match_live_width {
+        anyhow::bail!("--auto-width and --match-live-width cannot be used together");
+    }
+    let live_history = profile.history.unwrap_or(512).max(1);
     let mut image_config = profile.to_image_config();
     if let Some(v) = args.log_bins { image_config.spectrum.log_bins = v; }
     if let Some(v) = args.window { image_config.spectrum.window_size = v; }
@@ -129,15 +139,15 @@ fn main() -> Result<()> {
     if let Some(v) = args.width { image_config.width = v; }
     if let Some(v) = args.height { image_config.height = v; }
     if args.legacy_vertical_scroll { image_config.scroll_right_to_left = false; }
-    image_config.contrast = args.contrast;
-    image_config.saturation = args.saturation;
+    if let Some(v) = args.contrast { image_config.contrast = v; }
+    if let Some(v) = args.saturation { image_config.saturation = v; }
 
     eprintln!("=== vividspektrum audio_to_png ===");
     eprintln!("input   : {}", args.input.display());
     eprintln!("output  : {}", args.output.display());
     eprintln!("fft     : {} samples  |  hop : {} samples  |  window : {:?}  |  bands : {:?}", image_config.spectrum.window_size, image_config.spectrum.hop_size, image_config.spectrum.window_fn, image_config.spectrum.band_aggregation);
     eprintln!("smooth  : {:.2} sigma  |  gamma : {:.2}  |  ema : {:.2}  |  peak : {:.2}", image_config.spectrum.freq_smoothing_sigma, image_config.spectrum.amplitude_gamma, image_config.spectrum.temporal_alpha, image_config.spectrum.peak_hold_decay);
-    eprintln!("cmap    : {}", image_config.colormap);
+    eprintln!("cmap    : {}  |  contrast : {:.2}  |  saturation : {:.2}", image_config.colormap, image_config.contrast, image_config.saturation);
     eprintln!("weight  : {:?}  |  transform : {:?}", image_config.spectrum.weighting, image_config.spectrum.transform);
     if image_config.spectrum.transform == spektrum_core::Transform::Cqt {
         eprintln!("cqt     : {} bins/octave", image_config.spectrum.cqt_bins_per_octave);
@@ -180,8 +190,15 @@ fn main() -> Result<()> {
     eprintln!();
 
     if args.auto_width {
-        image_config.width = columns.len().max(1) as u32;
+        image_config.width = columns.len().max(1).min(u32::MAX as usize) as u32;
         eprintln!("       auto-width: {} px (one column per pixel)", image_config.width);
+    } else if args.match_live_width {
+        let live_width = args.live_width.unwrap_or(image_config.width).max(1);
+        image_config.width = ((columns.len() as u64)
+            .saturating_mul(live_width as u64)
+            .div_ceil(live_history as u64))
+            .clamp(1, u32::MAX as u64) as u32;
+        eprintln!("       live-width: {} px ({} columns × {} px ÷ {} history)", image_config.width, columns.len(), live_width, live_history);
     }
 
     let scale = if let Some(path) = &args.scale {
@@ -190,17 +207,39 @@ fn main() -> Result<()> {
     } else {
         None
     };
+    let colormaps = if args.all_colormaps {
+        spektrum_core::all_colormap_names()
+    } else {
+        vec![image_config.colormap.clone()]
+    };
 
-    eprintln!("[3/3] Rendering PNG...");
+    eprintln!("[3/3] Rendering {} PNG(s)...", colormaps.len());
     let render_start = Instant::now();
-    render_spectrogram_png_with_grid(&columns, &image_config, &args.output, scale.as_ref())?;
+    for colormap in colormaps {
+        let mut config = image_config.clone();
+        config.colormap = colormap.clone();
+        let output = if args.all_colormaps {
+            output_for_colormap(&args.output, &colormap)
+        } else {
+            args.output.clone()
+        };
+        render_spectrogram_png_with_grid(&columns, &config, &output, scale.as_ref())?;
+        eprintln!("       {}", output.display());
+    }
     let render_elapsed = render_start.elapsed();
     eprintln!("       render took {:.2}s", render_elapsed.as_secs_f64());
     eprintln!();
 
     let total_elapsed = total_start.elapsed();
-    eprintln!("Done. Total: {:.2}s  ->  {}", total_elapsed.as_secs_f64(), args.output.display());
+    eprintln!("Done. Total: {:.2}s", total_elapsed.as_secs_f64());
     Ok(())
+}
+
+fn output_for_colormap(output: &Path, colormap: &str) -> PathBuf {
+    let stem = output.file_stem().and_then(|s| s.to_str()).unwrap_or("spectrogram");
+    let extension = output.extension().and_then(|s| s.to_str()).unwrap_or("png");
+    let name: String = colormap.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    output.with_file_name(format!("{stem}-{name}.{extension}"))
 }
 
 fn parse_timestamp(s: &str, sample_rate: u32) -> Result<usize> {

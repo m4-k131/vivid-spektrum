@@ -8,7 +8,7 @@ use iced::widget::shader::Shader;
 use iced::{Element, Event, Length, Size, Subscription, Task};
 use iced::keyboard;
 use iced::mouse;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -17,6 +17,7 @@ enum DspCommand {
     Restart(SpectrumConfig, u32),
     UpdateRuntime(SpectrumConfig),
     SetHistory(u32),
+    SetPaused(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +38,8 @@ pub struct App {
     colormaps: Vec<String>,
     profiles: Vec<String>,
     overlays: Vec<String>,
+    sources: Vec<String>,
+    source_targets: HashMap<String, String>,
 }
 
 impl App {
@@ -55,11 +58,41 @@ impl App {
 
         let rtl = if args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
         let history = effective_spectrogram_history(args.history);
+        let capture_target = args.target_object.clone()
+            .or_else(spektrum_core::pipewire::default_pulse_output_monitor)
+            .or_else(spektrum_core::pipewire::default_pulse_source);
+        let mut source_targets = HashMap::new();
+        let mut sources = Vec::new();
+        for (index, target) in spektrum_core::pipewire::pulse_sources().into_iter().enumerate() {
+            let label = source_label(index, &target);
+            source_targets.insert(label.clone(), target);
+            sources.push(label);
+        }
+        let source = capture_target.as_deref()
+            .and_then(|target| source_targets.iter().find_map(|(label, value)| (value == target).then(|| label.clone())))
+            .unwrap_or_else(|| {
+                let target = capture_target.clone().unwrap_or_else(|| "default input".to_string());
+                let label = source_label(sources.len(), &target);
+                source_targets.insert(label.clone(), target);
+                sources.push(label.clone());
+                label
+            });
 
         let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
         let (producer, mut consumer) = sample_ring_pair((spectrum.sample_rate as usize) * 2);
         let _pw = spektrum_core::pipewire::spawn_capture_lockfree(args.target_object.clone(), producer);
+        if let Some(target) = capture_target {
+            std::thread::spawn(move || {
+                for _ in 0..20 {
+                    if spektrum_core::pipewire::move_capture_to_pulse_source(&target).is_ok() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                eprintln!("failed to select startup audio source '{target}'");
+            });
+        }
 
         let (restart_tx, restart_rx) = mpsc::channel::<DspCommand>();
         let initial_cfg = spectrum.clone();
@@ -74,6 +107,7 @@ impl App {
             let mut cfg = initial_cfg;
             let mut backlog_cap: usize = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
             let mut proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+            let mut paused = false;
 
             loop {
                 while let Ok(cmd) = restart_rx.try_recv() {
@@ -93,12 +127,21 @@ impl App {
                         DspCommand::SetHistory(new_history) => {
                             backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
                         }
+                        DspCommand::SetPaused(value) => {
+                            paused = value;
+                            if !paused {
+                                proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+                            }
+                        }
                     }
                 }
 
                 let n = consumer.pop_into(&mut scratch);
                 if n == 0 {
                     std::thread::sleep(Duration::from_micros(500));
+                    continue;
+                }
+                if paused {
                     continue;
                 }
                 let t0 = Instant::now();
@@ -144,7 +187,7 @@ impl App {
             .or(args.profile.clone())
             .unwrap_or_else(|| "default".to_string());
 
-        let colormaps = spektrum_core::builtin_colormap_names();
+        let colormaps = spektrum_core::all_colormap_names();
         let profiles = list_profile_names();
         let overlays = list_overlay_names();
 
@@ -153,6 +196,7 @@ impl App {
                 pending_spectra,
                 bins: spectrum.log_bins as u32,
                 min_history: history,
+                paused: false,
                 dev: SpectrogramDevConfig { scroll_right_to_left: rtl },
                 colormap_lut,
                 contrast,
@@ -170,6 +214,7 @@ impl App {
                 colormap_name,
                 profile_name,
                 args.overlay.clone().unwrap_or_else(|| "none".to_string()),
+                source,
                 &spectrum,
                 history as f32,
             ),
@@ -181,6 +226,8 @@ impl App {
             colormaps,
             profiles,
             overlays,
+            sources,
+            source_targets,
         }
     }
 }
@@ -202,6 +249,14 @@ fn load_profile_by_name(name: &str) -> Option<profiles::Profile> {
 
 fn list_profile_names() -> Vec<String> {
     profiles::list_profile_names()
+}
+
+fn source_label(index: usize, source: &str) -> String {
+    let kind = if source.ends_with(".monitor") { "Output" } else { "Input" };
+    let mut text = source.chars();
+    let abbreviated: String = text.by_ref().take(32).collect();
+    let suffix = if text.next().is_some() { "…" } else { "" };
+    format!("{kind} {} · {abbreviated}{suffix}", index + 1)
 }
 
 fn list_overlay_names() -> Vec<String> {
@@ -298,7 +353,7 @@ fn apply_profile(app: &mut App, name: &str) {
     let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
 
     let rtl = if app.args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
-    let history = app.settings.history.max(1.0) as u32;
+    let history = profile.history.unwrap_or(app.settings.history.max(1.0) as u32).max(1);
 
     app.restart_tx.send(DspCommand::Restart(spectrum.clone(), history)).ok();
 
@@ -339,11 +394,41 @@ fn apply_overlay(app: &mut App, name: &str) {
     app.prog.overlay_thickness = thickness;
 }
 
+fn current_profile(app: &App) -> profiles::Profile {
+    profiles::Profile {
+        spectrum: app.spectrum.clone(),
+        image: Some(profiles::ProfileImage {
+            width: 800,
+            height: 800,
+            scroll_right_to_left: app.prog.dev.scroll_right_to_left,
+            colormap: app.settings.colormap.clone(),
+            contrast: app.settings.contrast,
+            saturation: app.settings.saturation,
+        }),
+        history: Some(app.prog.min_history),
+    }
+}
+
+fn refresh_libraries(app: &mut App) {
+    app.profiles = list_profile_names();
+    app.colormaps = spektrum_core::all_colormap_names();
+}
+
 fn apply_colormap(app: &mut App, name: &str) {
     if let Ok(cm) = resolve_colormap(name) {
         app.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
         app.settings.colormap = name.to_string();
     }
+}
+
+fn apply_edited_colormap(app: &mut App) {
+    if app.settings.colormap_stops.len() < 2 {
+        return;
+    }
+    let mut stops = app.settings.colormap_stops.clone();
+    stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let colormap = spektrum_core::Colormap::new(&app.settings.colormap, stops);
+    app.prog.colormap_lut = Arc::new(colormap.build_lut_rgba(256));
 }
 
 fn apply_advanced(app: &mut App, field: DspSlider) {
@@ -434,6 +519,11 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 keyboard::Key::Named(keyboard::key::Named::Escape) => {
                     app.settings.close();
                 }
+                keyboard::Key::Named(keyboard::key::Named::Space) => {
+                    app.prog.paused = !app.prog.paused;
+                    app.prog.pending_spectra.lock().unwrap().clear();
+                    app.restart_tx.send(DspCommand::SetPaused(app.prog.paused)).ok();
+                }
                 _ => {}
             }
             Task::none()
@@ -454,6 +544,109 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 SettingsMessage::SetColormap(name) => apply_colormap(app, &name),
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
                 SettingsMessage::SetOverlay(name) => apply_overlay(app, &name),
+                SettingsMessage::OpenManager(manager) => {
+                    app.settings.library_name.clear();
+                    if matches!(manager, spektrum::settings::LibraryManager::Colormaps) {
+                        app.settings.colormap_stops = resolve_colormap(&app.settings.colormap)
+                            .map(|map| map.stops().to_vec())
+                            .unwrap_or_default();
+                    }
+                    app.settings.manager = Some(manager);
+                }
+                SettingsMessage::CloseManager => app.settings.manager = None,
+                SettingsMessage::SetLibraryName(name) => app.settings.library_name = name,
+                SettingsMessage::SaveProfile => {
+                    let name = if app.settings.library_name.trim().is_empty() {
+                        app.settings.profile.clone()
+                    } else {
+                        app.settings.library_name.trim().to_string()
+                    };
+                    if let Err(e) = profiles::save_user_profile(&name, &current_profile(app)) {
+                        eprintln!("failed to save profile: {e}");
+                    } else {
+                        app.settings.profile = name;
+                        app.settings.library_name.clear();
+                        refresh_libraries(app);
+                    }
+                }
+                SettingsMessage::DeleteProfile => {
+                    let name = app.settings.profile.clone();
+                    match profiles::delete_user_profile(&name) {
+                        Ok(()) => {
+                            app.settings.profile = "default".to_string();
+                            refresh_libraries(app);
+                        }
+                        Err(e) => eprintln!("failed to delete profile: {e}"),
+                    }
+                }
+                SettingsMessage::SaveColormap => {
+                    let name = if app.settings.library_name.trim().is_empty() {
+                        app.settings.colormap.clone()
+                    } else {
+                        app.settings.library_name.trim().to_string()
+                    };
+                    let colormap = if app.settings.colormap_stops.len() >= 2 {
+                        spektrum_core::Colormap::new(&name, app.settings.colormap_stops.clone())
+                    } else {
+                        match resolve_colormap(&app.settings.colormap) {
+                            Ok(colormap) => colormap,
+                            Err(e) => {
+                                eprintln!("failed to load colormap: {e}");
+                                return Task::none();
+                            }
+                        }
+                    };
+                    match spektrum_core::colormap::save_user_colormap(&name, &colormap) {
+                            Ok(()) => {
+                                apply_colormap(app, &name);
+                                app.settings.library_name.clear();
+                                refresh_libraries(app);
+                            }
+                            Err(e) => eprintln!("failed to save colormap: {e}"),
+                    }
+                }
+                SettingsMessage::SetColorStop(index, component, value) => {
+                    if let Some(stop) = app.settings.colormap_stops.get_mut(index) {
+                        match component {
+                            0 => stop.0 = value.clamp(0.0, 1.0),
+                            1 => stop.1 = value.clamp(0.0, 1.0),
+                            2 => stop.2 = value.clamp(0.0, 1.0),
+                            3 => stop.3 = value.clamp(0.0, 1.0),
+                            _ => {}
+                        }
+                        apply_edited_colormap(app);
+                    }
+                }
+                SettingsMessage::AddColorStop => {
+                    app.settings.colormap_stops.push((0.5, 0.5, 0.5, 0.5));
+                    app.settings.colormap_stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    apply_edited_colormap(app);
+                }
+                SettingsMessage::DeleteColorStop(index) => {
+                    if app.settings.colormap_stops.len() > 2 && index < app.settings.colormap_stops.len() {
+                        app.settings.colormap_stops.remove(index);
+                        apply_edited_colormap(app);
+                    }
+                }
+                SettingsMessage::DeleteColormap => {
+                    let name = app.settings.colormap.clone();
+                    match spektrum_core::colormap::delete_user_colormap(&name) {
+                        Ok(()) => {
+                            apply_colormap(app, "viridis");
+                            refresh_libraries(app);
+                        }
+                        Err(e) => eprintln!("failed to delete colormap: {e}"),
+                    }
+                }
+                SettingsMessage::SetSource(source) => {
+                    let Some(target) = app.source_targets.get(&source) else {
+                        return Task::none();
+                    };
+                    match spektrum_core::pipewire::move_capture_to_pulse_source(target) {
+                        Ok(()) => app.settings.source = source,
+                        Err(e) => eprintln!("failed to change audio source: {e}"),
+                    }
+                }
                 SettingsMessage::AdvancedSlider(field, value) => app.settings.set(field, value),
                 SettingsMessage::AdvancedSliderRelease(field) => apply_advanced(app, field),
                 SettingsMessage::SetWindowFn(w) => {
@@ -498,7 +691,7 @@ fn view(app: &App) -> Element<'_, Message> {
         return spectrogram.into();
     }
 
-    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.overlays)
+    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.overlays, &app.sources)
         .map(Message::Settings);
     let panel: Element<'_, Message> = container(menu)
         .width(Length::Fill)
@@ -530,7 +723,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     };
     let img = profile_for_size.as_ref().and_then(|p| p.image.as_ref());
     let win_w = args.width.unwrap_or(img.map_or(800, |i| i.width));
-    let win_h = args.height.unwrap_or(img.map_or(200, |i| i.height));
+    let win_h = args.height.unwrap_or(img.map_or(800, |i| i.height));
     let size = Size::new(win_w as f32, win_h as f32);
     let level = if args.always_on_top {
         iced::window::Level::AlwaysOnTop
@@ -549,6 +742,13 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     let transparent = args.transparent;
     let mut app = iced::application(move || App::bootstrap(args.clone()), update, view)
         .title("vividspektrum")
+        .window(iced::window::Settings {
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: "vividspektrum".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
         .window_size(size)
         .subscription(subscription)
         .theme(iced::Theme::Dark)

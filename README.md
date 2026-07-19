@@ -231,7 +231,7 @@ Practical limits:
 | `--freq-scale-exp` | 0.5 | Vertical axis warping |
 | `--centered` | off | Centered analysis window |
 | `--width` | 800 | Initial window width |
-| `--height` | 200 | Initial window height |
+| `--height` | 800 | Initial window height |
 | `--history` | 512 | Time columns in the live texture |
 | `--sample-rate` | 48000 | Audio sample rate |
 | `--legacy-vertical-scroll` | off | Scroll top-to-bottom |

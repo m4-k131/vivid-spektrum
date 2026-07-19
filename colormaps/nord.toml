@@ -1,55 +1,31 @@
-name = "nord"
+name = "nord-5"
 
 [[stops]]
-position = 0.000
+position = 0.0
 r = 0.180
 g = 0.204
 b = 0.251
 
 [[stops]]
-position = 0.125
-r = 0.263
-g = 0.314
-b = 0.376
-
-[[stops]]
-position = 0.250
+position = 0.25
 r = 0.369
 g = 0.424
 b = 0.502
 
 [[stops]]
-position = 0.375
-r = 0.529
-g = 0.553
-b = 0.627
-
-[[stops]]
-position = 0.500
+position = 0.5
 r = 0.698
 g = 0.667
 b = 0.749
 
 [[stops]]
-position = 0.625
-r = 0.812
-g = 0.733
-b = 0.804
-
-[[stops]]
-position = 0.750
+position = 0.75
 r = 0.878
 g = 0.808
 b = 0.859
 
 [[stops]]
-position = 0.875
-r = 0.925
-g = 0.882
-b = 0.910
-
-[[stops]]
-position = 1.000
+position = 1.0
 r = 0.925
 g = 0.910
 b = 0.925
