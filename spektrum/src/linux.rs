@@ -80,7 +80,18 @@ impl App {
         let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
         let pending_w = pending_spectra.clone();
         let (producer, mut consumer) = sample_ring_pair((spectrum.sample_rate as usize) * 2);
-        let _pw = spektrum_core::pipewire::spawn_capture_lockfree(capture_target, producer);
+        let _pw = spektrum_core::pipewire::spawn_capture_lockfree(args.target_object.clone(), producer);
+        if let Some(target) = capture_target {
+            std::thread::spawn(move || {
+                for _ in 0..20 {
+                    if spektrum_core::pipewire::move_capture_to_pulse_source(&target).is_ok() {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                eprintln!("failed to select startup audio source '{target}'");
+            });
+        }
 
         let (restart_tx, restart_rx) = mpsc::channel::<DspCommand>();
         let initial_cfg = spectrum.clone();
