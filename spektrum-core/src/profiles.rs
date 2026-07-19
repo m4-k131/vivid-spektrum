@@ -6,6 +6,8 @@ use std::path::Path;
 pub struct Profile {
     pub spectrum: SpectrumConfig,
     pub image: Option<ProfileImage>,
+    #[serde(default)]
+    pub history: Option<u32>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -64,10 +66,12 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
                 ..Default::default()
             },
             image: None,
+            history: None,
         }),
         "default" => Some(Profile {
             spectrum: SpectrumConfig::default(),
             image: None,
+            history: None,
         }),
         "high-resolution" => Some(Profile {
             spectrum: SpectrumConfig {
@@ -83,6 +87,7 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
                 ..Default::default()
             },
             image: None,
+            history: None,
         }),
         _ => None,
     }
@@ -92,31 +97,56 @@ pub fn builtin_profile_names() -> &'static [&'static str] {
     &["laptop", "default", "high-resolution"]
 }
 
+pub fn user_profiles_dir() -> std::path::PathBuf {
+    config_dir().join("vividspektrum/profiles")
+}
+
+pub fn is_builtin_profile(name: &str) -> bool {
+    builtin_profile(name).is_some() || std::path::Path::new("presets").join(format!("{name}.toml")).exists()
+}
+
+pub fn save_user_profile(name: &str, profile: &Profile) -> Result<(), CoreError> {
+    validate_name(name)?;
+    if is_builtin_profile(name) {
+        return Err(CoreError::Dsp(format!("'{name}' is a protected built-in profile")));
+    }
+    let dir = user_profiles_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| CoreError::Dsp(format!("failed to create profile directory: {e}")))?;
+    let path = dir.join(format!("{name}.toml"));
+    let text = toml::to_string_pretty(profile).map_err(|e| CoreError::Dsp(format!("failed to serialize profile: {e}")))?;
+    let temp = path.with_extension("toml.tmp");
+    std::fs::write(&temp, text).map_err(|e| CoreError::Dsp(format!("failed to write profile: {e}")))?;
+    std::fs::rename(temp, path).map_err(|e| CoreError::Dsp(format!("failed to save profile: {e}")))
+}
+
+pub fn delete_user_profile(name: &str) -> Result<(), CoreError> {
+    validate_name(name)?;
+    std::fs::remove_file(user_profiles_dir().join(format!("{name}.toml")))
+        .map_err(|e| CoreError::Dsp(format!("failed to delete profile: {e}")))
+}
+
 pub fn resolve_profile(name: &str) -> Result<Profile, CoreError> {
     if let Some(p) = builtin_profile(name) {
         return Ok(p);
     }
-    let path = std::path::PathBuf::from(format!("presets/{name}.toml"));
-    if path.exists() {
-        load_profile(&path)
-    } else {
-        Err(CoreError::Dsp(format!("unknown profile '{name}'")))
+    let user_path = user_profiles_dir().join(format!("{name}.toml"));
+    if user_path.exists() {
+        return load_profile(&user_path);
     }
+    let path = std::path::PathBuf::from(format!("presets/{name}.toml"));
+    if path.exists() { load_profile(&path) } else { Err(CoreError::Dsp(format!("unknown profile '{name}'"))) }
 }
 
 pub fn list_profile_names() -> Vec<String> {
-    let mut names: Vec<String> = builtin_profile_names()
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    if let Ok(entries) = std::fs::read_dir("presets") {
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.extension().is_some_and(|ext| ext == "toml") {
-                if let Some(s) = p.file_stem() {
-                    let s = s.to_string_lossy().into_owned();
-                    if !names.contains(&s) {
-                        names.push(s);
+    let mut names: Vec<String> = builtin_profile_names().iter().map(|s| s.to_string()).collect();
+    for dir in [std::path::PathBuf::from("presets"), user_profiles_dir()] {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.extension().is_some_and(|ext| ext == "toml") {
+                    if let Some(s) = p.file_stem() {
+                        let s = s.to_string_lossy().into_owned();
+                        if !names.contains(&s) { names.push(s); }
                     }
                 }
             }
@@ -124,6 +154,19 @@ pub fn list_profile_names() -> Vec<String> {
     }
     names.sort();
     names
+}
+
+fn config_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".config")))
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+}
+
+fn validate_name(name: &str) -> Result<(), CoreError> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(CoreError::Dsp("names may contain only letters, numbers, '-' and '_'".to_string()));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -170,6 +213,7 @@ mod tests {
         let profile = Profile {
             spectrum: SpectrumConfig::default(),
             image: None,
+            history: None,
         };
         let cfg = profile.to_image_config();
         assert_eq!(cfg.width, 800);
@@ -190,6 +234,7 @@ mod tests {
                 contrast: 1.0,
                 saturation: 1.0,
             }),
+            history: None,
         };
         let cfg = profile.to_image_config();
         assert_eq!(cfg.width, 1920);

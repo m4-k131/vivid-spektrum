@@ -1,5 +1,5 @@
 //! Shared settings overlay panel used by the live spectrogram window (Linux & Windows).
-use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, slider, text, Space, Tooltip};
+use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, slider, text, text_input, Space, Tooltip};
 use iced::widget::tooltip::Position;
 use iced::{Alignment, Element, Length, Theme};
 use spektrum_core::{BandAggregation, SpectrumConfig, Transform, Weighting, WindowFunction};
@@ -147,6 +147,12 @@ fn label_row<'a>(label: &'a str, tip: &'a str) -> Element<'a, SettingsMessage> {
 }
 
 #[derive(Debug, Clone)]
+pub enum LibraryManager {
+    Profiles,
+    Colormaps,
+}
+
+#[derive(Debug, Clone)]
 pub enum SettingsMessage {
     Toggle,
     Close,
@@ -156,6 +162,16 @@ pub enum SettingsMessage {
     SetProfile(String),
     SetOverlay(String),
     SetSource(String),
+    OpenManager(LibraryManager),
+    CloseManager,
+    SetLibraryName(String),
+    SaveProfile,
+    DeleteProfile,
+    SaveColormap,
+    DeleteColormap,
+    SetColorStop(usize, u8, f32),
+    AddColorStop,
+    DeleteColorStop(usize),
     AdvancedSlider(DspSlider, f32),
     AdvancedSliderRelease(DspSlider),
     SetWindowFn(WindowFunction),
@@ -176,6 +192,9 @@ pub struct SettingsState {
     pub width: f32,
     pub advanced: SpectrumConfig,
     pub history: f32,
+    pub manager: Option<LibraryManager>,
+    pub library_name: String,
+    pub colormap_stops: Vec<(f32, f32, f32, f32)>,
 }
 
 impl SettingsState {
@@ -201,6 +220,9 @@ impl SettingsState {
             width: 280.0,
             advanced: spectrum.clone(),
             history,
+            manager: None,
+            library_name: String::new(),
+            colormap_stops: Vec::new(),
         }
     }
 
@@ -262,6 +284,9 @@ impl SettingsState {
         overlays: &'a [String],
         sources: &'a [String],
     ) -> Element<'a, SettingsMessage> {
+        if let Some(manager) = &self.manager {
+            return self.manager_view(manager);
+        }
         let header = row![
             text("vividspektrum").size(20),
             Space::new().width(Length::Fill),
@@ -272,7 +297,10 @@ impl SettingsState {
 
         let controls = column![
             label_row("Colormap", "Color map used to map magnitude to color."),
-            pick_list(colormaps, Some(self.colormap.clone()), SettingsMessage::SetColormap),
+            row![
+                pick_list(colormaps, Some(self.colormap.clone()), SettingsMessage::SetColormap).width(Length::Fill),
+                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Colormaps)),
+            ].spacing(6),
             row![
                 text(format!("Contrast {:.2}", self.contrast)).size(12),
                 Space::new().width(Length::Fill),
@@ -295,7 +323,10 @@ impl SettingsState {
                 .text_size(11)
                 .width(Length::Fill),
             label_row("Profile preset", "Load a saved preset. You can still move the sliders afterwards."),
-            pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile),
+            row![
+                pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
+                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
+            ].spacing(6),
             label_row("Window function", "Time-domain window applied before FFT. Blackman-Harris reduces leakage."),
             pick_list(WINDOW_FUNCTIONS, Some(self.advanced.window_fn), SettingsMessage::SetWindowFn),
             label_row("Transform", "STFT: equal time/frequency resolution. CQT: musical pitch spacing."),
@@ -337,6 +368,70 @@ impl SettingsState {
             .height(Length::Fill);
 
         container(panel)
+            .width(Length::Fixed(self.width))
+            .height(Length::Fill)
+            .style(|_theme: &Theme| container::Style {
+                background: Some(iced::Color::from_rgb8(20, 20, 25).into()),
+                ..Default::default()
+            })
+            .into()
+    }
+
+    fn manager_view<'a>(&'a self, manager: &LibraryManager) -> Element<'a, SettingsMessage> {
+        let (title, current, save, delete) = match manager {
+            LibraryManager::Profiles => ("Manage profiles", &self.profile, SettingsMessage::SaveProfile, SettingsMessage::DeleteProfile),
+            LibraryManager::Colormaps => ("Manage colormaps", &self.colormap, SettingsMessage::SaveColormap, SettingsMessage::DeleteColormap),
+        };
+        let mut body = column![
+            row![text(title).size(20), Space::new().width(Length::Fill), button("Back").on_press(SettingsMessage::CloseManager)]
+                .align_y(Alignment::Center),
+            text(format!("Selected: {current}")).size(12),
+            text("Built-ins are protected. Enter a new name to save a copy.").size(12),
+            text_input("new name (optional)", &self.library_name).on_input(SettingsMessage::SetLibraryName),
+        ];
+        let protected = match manager {
+            LibraryManager::Profiles => spektrum_core::profiles::is_builtin_profile(current),
+            LibraryManager::Colormaps => spektrum_core::colormap::is_builtin_colormap(current),
+        };
+        let save_selected = if protected {
+            button("Built-in is protected")
+        } else {
+            button("Save selected user item").on_press(save.clone())
+        };
+        let delete_selected = if protected {
+            button("Built-in cannot be deleted")
+        } else {
+            button("Delete selected user item").on_press(delete)
+        };
+        body = body.push(save_selected).push(button("Save as user copy").on_press(save)).push(delete_selected);
+        if matches!(manager, LibraryManager::Colormaps) {
+            body = body.push(button("Add color stop").on_press(SettingsMessage::AddColorStop));
+            for (index, &(position, r, g, b)) in self.colormap_stops.iter().enumerate() {
+                body = body.push(column![
+                    row![
+                        text(format!("Stop {}", index + 1)).size(12),
+                        Space::new().width(Length::Fill),
+                        container(Space::new().width(Length::Fixed(18.0)).height(Length::Fixed(18.0)))
+                            .style(move |_theme: &Theme| container::Style {
+                                background: Some(iced::Color::from_rgb(r, g, b).into()),
+                                border: iced::Border { color: iced::Color::from_rgb8(180, 180, 180), width: 1.0, radius: 3.0.into() },
+                                ..Default::default()
+                            }),
+                        button("Remove").on_press(SettingsMessage::DeleteColorStop(index)),
+                    ].spacing(6).align_y(Alignment::Center),
+                    text(format!("Position {:.2}", position)).size(11),
+                    slider(0.0..=1.0, position, move |value| SettingsMessage::SetColorStop(index, 0, value)).step(0.01),
+                    text(format!("Red {:.2}", r)).size(11),
+                    slider(0.0..=1.0, r, move |value| SettingsMessage::SetColorStop(index, 1, value)).step(0.01),
+                    text(format!("Green {:.2}", g)).size(11),
+                    slider(0.0..=1.0, g, move |value| SettingsMessage::SetColorStop(index, 2, value)).step(0.01),
+                    text(format!("Blue {:.2}", b)).size(11),
+                    slider(0.0..=1.0, b, move |value| SettingsMessage::SetColorStop(index, 3, value)).step(0.01),
+                ].spacing(4));
+            }
+        }
+        let body = scrollable(body.spacing(12).padding(16)).height(Length::Fill).width(Length::Fixed(self.width));
+        container(body)
             .width(Length::Fixed(self.width))
             .height(Length::Fill)
             .style(|_theme: &Theme| container::Style {

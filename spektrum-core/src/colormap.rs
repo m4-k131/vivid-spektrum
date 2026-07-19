@@ -11,6 +11,9 @@ impl Colormap {
     pub fn name(&self) -> &str {
         &self.name
     }
+    pub fn stops(&self) -> &[(f32, f32, f32, f32)] {
+        &self.stops
+    }
     pub fn build_lut(&self, size: usize) -> Vec<[u8; 3]> {
         let n = size.max(2);
         let mut lut = Vec::with_capacity(n);
@@ -88,6 +91,14 @@ pub fn colormaps_dir() -> std::path::PathBuf {
     std::path::PathBuf::from("colormaps")
 }
 
+pub fn user_colormaps_dir() -> std::path::PathBuf {
+    config_dir().join("vividspektrum/colormaps")
+}
+
+pub fn is_builtin_colormap(name: &str) -> bool {
+    colormaps_dir().join(format!("{}.toml", name.to_lowercase())).exists()
+}
+
 pub fn builtin_colormap(name: &str) -> Option<Colormap> {
     let dir = colormaps_dir();
     let path = dir.join(format!("{}.toml", name.to_lowercase()));
@@ -114,6 +125,31 @@ pub fn builtin_colormap_names() -> Vec<String> {
     names
 }
 
+pub fn save_user_colormap(name: &str, colormap: &Colormap) -> Result<(), String> {
+    validate_name(name)?;
+    if is_builtin_colormap(name) {
+        return Err(format!("'{name}' is a protected built-in colormap"));
+    }
+    if colormap.stops.len() < 2 || colormap.stops.iter().any(|(p, r, g, b)| !(0.0..=1.0).contains(p) || !(0.0..=1.0).contains(r) || !(0.0..=1.0).contains(g) || !(0.0..=1.0).contains(b)) {
+        return Err("colormap stops must contain values from 0 to 1".to_string());
+    }
+    let mut stops = colormap.stops.clone();
+    stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let dir = user_colormaps_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create colormap directory: {e}"))?;
+    let path = dir.join(format!("{name}.toml"));
+    let file = ColormapFile { name: Some(name.to_string()), stops: stops.into_iter().map(|(position, r, g, b)| ColormapStop { position, r, g, b }).collect() };
+    let text = toml::to_string_pretty(&file).map_err(|e| format!("serialize colormap: {e}"))?;
+    let temp = path.with_extension("toml.tmp");
+    std::fs::write(&temp, text).map_err(|e| format!("write colormap: {e}"))?;
+    std::fs::rename(temp, path).map_err(|e| format!("save colormap: {e}"))
+}
+
+pub fn delete_user_colormap(name: &str) -> Result<(), String> {
+    validate_name(name)?;
+    std::fs::remove_file(user_colormaps_dir().join(format!("{name}.toml"))).map_err(|e| format!("delete colormap: {e}"))
+}
+
 pub fn default_colormap() -> Colormap {
     builtin_colormap("viridis").unwrap_or_else(|| Colormap {
         name: "fallback-grayscale".into(),
@@ -121,13 +157,13 @@ pub fn default_colormap() -> Colormap {
     })
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct ColormapFile {
     name: Option<String>,
     stops: Vec<ColormapStop>,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 struct ColormapStop {
     position: f32,
     r: f32,
@@ -158,6 +194,10 @@ pub fn resolve_colormap(name_or_path: &str) -> Result<Colormap, String> {
     if let Some(cm) = builtin_colormap(name_or_path) {
         return Ok(cm);
     }
+    let user_path = user_colormaps_dir().join(format!("{name_or_path}.toml"));
+    if user_path.exists() {
+        return load_colormap_file(&user_path);
+    }
     let path = std::path::Path::new(name_or_path);
     if path.exists() {
         return load_colormap_file(path);
@@ -165,8 +205,37 @@ pub fn resolve_colormap(name_or_path: &str) -> Result<Colormap, String> {
     Err(format!(
         "unknown colormap '{}'. Available: {:?}, or pass a .toml file path",
         name_or_path,
-        builtin_colormap_names()
+        all_colormap_names()
     ))
+}
+
+pub fn all_colormap_names() -> Vec<String> {
+    let mut names = builtin_colormap_names();
+    if let Ok(entries) = std::fs::read_dir(user_colormaps_dir()) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "toml") {
+                if let Some(name) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) {
+                    if !names.contains(&name) { names.push(name); }
+                }
+            }
+        }
+    }
+    names.sort();
+    names
+}
+
+fn config_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| std::path::PathBuf::from(home).join(".config")))
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+}
+
+fn validate_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err("names may contain only letters, numbers, '-' and '_'".to_string());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

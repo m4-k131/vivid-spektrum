@@ -165,7 +165,7 @@ impl App {
             .or(args.profile.clone())
             .unwrap_or_else(|| "default".to_string());
 
-        let colormaps = spektrum_core::builtin_colormap_names();
+        let colormaps = spektrum_core::all_colormap_names();
         let profiles = list_profile_names();
         let overlays = list_overlay_names();
 
@@ -330,7 +330,7 @@ fn apply_profile(app: &mut App, name: &str) {
     let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
 
     let rtl = if app.args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
-    let history = app.settings.history.max(1.0) as u32;
+    let history = profile.history.unwrap_or(app.settings.history.max(1.0) as u32).max(1);
 
     app.restart_tx.send(DspCommand::Restart(spectrum.clone(), history)).ok();
 
@@ -371,11 +371,41 @@ fn apply_overlay(app: &mut App, name: &str) {
     app.prog.overlay_thickness = thickness;
 }
 
+fn current_profile(app: &App) -> profiles::Profile {
+    profiles::Profile {
+        spectrum: app.spectrum.clone(),
+        image: Some(profiles::ProfileImage {
+            width: 800,
+            height: 800,
+            scroll_right_to_left: app.prog.dev.scroll_right_to_left,
+            colormap: app.settings.colormap.clone(),
+            contrast: app.settings.contrast,
+            saturation: app.settings.saturation,
+        }),
+        history: Some(app.prog.min_history),
+    }
+}
+
+fn refresh_libraries(app: &mut App) {
+    app.profiles = list_profile_names();
+    app.colormaps = spektrum_core::all_colormap_names();
+}
+
 fn apply_colormap(app: &mut App, name: &str) {
     if let Ok(cm) = resolve_colormap(name) {
         app.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
         app.settings.colormap = name.to_string();
     }
+}
+
+fn apply_edited_colormap(app: &mut App) {
+    if app.settings.colormap_stops.len() < 2 {
+        return;
+    }
+    let mut stops = app.settings.colormap_stops.clone();
+    stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let colormap = spektrum_core::Colormap::new(&app.settings.colormap, stops);
+    app.prog.colormap_lut = Arc::new(colormap.build_lut_rgba(256));
 }
 
 fn apply_advanced(app: &mut App, field: DspSlider) {
@@ -486,6 +516,100 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 SettingsMessage::SetColormap(name) => apply_colormap(app, &name),
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
                 SettingsMessage::SetOverlay(name) => apply_overlay(app, &name),
+                SettingsMessage::OpenManager(manager) => {
+                    app.settings.library_name.clear();
+                    if matches!(manager, spektrum::settings::LibraryManager::Colormaps) {
+                        app.settings.colormap_stops = resolve_colormap(&app.settings.colormap)
+                            .map(|map| map.stops().to_vec())
+                            .unwrap_or_default();
+                    }
+                    app.settings.manager = Some(manager);
+                }
+                SettingsMessage::CloseManager => app.settings.manager = None,
+                SettingsMessage::SetLibraryName(name) => app.settings.library_name = name,
+                SettingsMessage::SaveProfile => {
+                    let name = if app.settings.library_name.trim().is_empty() {
+                        app.settings.profile.clone()
+                    } else {
+                        app.settings.library_name.trim().to_string()
+                    };
+                    if let Err(e) = profiles::save_user_profile(&name, &current_profile(app)) {
+                        eprintln!("failed to save profile: {e}");
+                    } else {
+                        app.settings.profile = name;
+                        app.settings.library_name.clear();
+                        refresh_libraries(app);
+                    }
+                }
+                SettingsMessage::DeleteProfile => {
+                    let name = app.settings.profile.clone();
+                    match profiles::delete_user_profile(&name) {
+                        Ok(()) => {
+                            app.settings.profile = "default".to_string();
+                            refresh_libraries(app);
+                        }
+                        Err(e) => eprintln!("failed to delete profile: {e}"),
+                    }
+                }
+                SettingsMessage::SaveColormap => {
+                    let name = if app.settings.library_name.trim().is_empty() {
+                        app.settings.colormap.clone()
+                    } else {
+                        app.settings.library_name.trim().to_string()
+                    };
+                    let colormap = if app.settings.colormap_stops.len() >= 2 {
+                        spektrum_core::Colormap::new(&name, app.settings.colormap_stops.clone())
+                    } else {
+                        match resolve_colormap(&app.settings.colormap) {
+                            Ok(colormap) => colormap,
+                            Err(e) => {
+                                eprintln!("failed to load colormap: {e}");
+                                return Task::none();
+                            }
+                        }
+                    };
+                    match spektrum_core::colormap::save_user_colormap(&name, &colormap) {
+                            Ok(()) => {
+                                apply_colormap(app, &name);
+                                app.settings.library_name.clear();
+                                refresh_libraries(app);
+                            }
+                            Err(e) => eprintln!("failed to save colormap: {e}"),
+                    }
+                }
+                SettingsMessage::SetColorStop(index, component, value) => {
+                    if let Some(stop) = app.settings.colormap_stops.get_mut(index) {
+                        match component {
+                            0 => stop.0 = value.clamp(0.0, 1.0),
+                            1 => stop.1 = value.clamp(0.0, 1.0),
+                            2 => stop.2 = value.clamp(0.0, 1.0),
+                            3 => stop.3 = value.clamp(0.0, 1.0),
+                            _ => {}
+                        }
+                        apply_edited_colormap(app);
+                    }
+                }
+                SettingsMessage::AddColorStop => {
+                    app.settings.colormap_stops.push((0.5, 0.5, 0.5, 0.5));
+                    app.settings.colormap_stops.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    apply_edited_colormap(app);
+                }
+                SettingsMessage::DeleteColorStop(index) => {
+                    if app.settings.colormap_stops.len() > 2 && index < app.settings.colormap_stops.len() {
+                        app.settings.colormap_stops.remove(index);
+                        apply_edited_colormap(app);
+                    }
+                }
+                SettingsMessage::DeleteColormap => {
+                    let name = app.settings.colormap.clone();
+                    match spektrum_core::colormap::delete_user_colormap(&name) {
+                        Ok(()) => {
+                            apply_colormap(app, "viridis");
+                            refresh_libraries(app);
+                        }
+                        Err(e) => eprintln!("failed to delete colormap: {e}"),
+                    }
+                }
                 SettingsMessage::SetSource(source) => {
                     let Some(target) = app.source_targets.get(&source) else {
                         return Task::none();
@@ -590,6 +714,13 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     let transparent = args.transparent;
     let mut app = iced::application(move || App::bootstrap(args.clone()), update, view)
         .title("vividspektrum")
+        .window(iced::window::Settings {
+            platform_specific: iced::window::settings::PlatformSpecific {
+                application_id: "vividspektrum".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
         .window_size(size)
         .subscription(subscription)
         .theme(iced::Theme::Dark)
