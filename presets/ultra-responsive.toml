@@ -3,7 +3,7 @@
 # Good for beat detection, transient-heavy music, live performance.
 # Usage: cargo run --bin vividspektrum -- --config presets/ultra-responsive.toml
 
-[spectrum]
+[dsp]
 window_size = 2048
 hop_size = 128
 sample_rate = 48000
@@ -24,4 +24,6 @@ freq_scale_exp = 0.5
 width = 800
 height = 200
 scroll_right_to_left = true
+
+[colors]
 colormap = "plasma"

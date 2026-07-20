@@ -3,7 +3,7 @@
 # Designed for always-on-desktop use with --no-decorations --always-on-bottom.
 # Usage: cargo run --bin vividspektrum -- --config presets/minimal-dark.toml --no-decorations --always-on-bottom
 
-[spectrum]
+[dsp]
 window_size = 8192
 hop_size = 1024
 sample_rate = 48000
@@ -24,4 +24,6 @@ freq_scale_exp = 0.5
 width = 400
 height = 120
 scroll_right_to_left = true
+
+[colors]
 colormap = "tokyo-night"

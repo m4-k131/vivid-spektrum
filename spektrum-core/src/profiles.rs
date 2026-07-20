@@ -4,10 +4,31 @@ use std::path::Path;
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Profile {
-    pub spectrum: SpectrumConfig,
+    pub dsp: SpectrumConfig,
+    pub colors: ColorSettings,
     pub image: Option<ProfileImage>,
     #[serde(default)]
     pub history: Option<u32>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ColorSettings {
+    pub colormap: String,
+    pub contrast: f32,
+    pub saturation: f32,
+    pub overlay: String,
+}
+
+impl Default for ColorSettings {
+    fn default() -> Self {
+        Self {
+            colormap: "viridis".into(),
+            contrast: 1.0,
+            saturation: 1.0,
+            overlay: "none".into(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -18,32 +39,23 @@ pub struct ProfileImage {
     pub height: u32,
     #[serde(default = "default_scroll")]
     pub scroll_right_to_left: bool,
-    #[serde(default = "default_colormap")]
-    pub colormap: String,
-    #[serde(default = "default_contrast")]
-    pub contrast: f32,
-    #[serde(default = "default_saturation")]
-    pub saturation: f32,
 }
 
 fn default_width() -> u32 { 800 }
 fn default_height() -> u32 { 800 }
 fn default_scroll() -> bool { true }
-fn default_colormap() -> String { "viridis".into() }
-fn default_contrast() -> f32 { 1.0 }
-fn default_saturation() -> f32 { 1.0 }
 
 impl Profile {
     pub fn to_image_config(&self) -> SpectrogramImageConfig {
         let img = self.image.as_ref();
         SpectrogramImageConfig {
-            spectrum: self.spectrum.clone(),
+            spectrum: self.dsp.clone(),
             width: img.map_or(800, |i| i.width),
             height: img.map_or(800, |i| i.height),
             scroll_right_to_left: img.is_none_or(|i| i.scroll_right_to_left),
-            colormap: img.map_or_else(|| "viridis".into(), |i| i.colormap.clone()),
-            contrast: img.map_or(1.0, |i| i.contrast),
-            saturation: img.map_or(1.0, |i| i.saturation),
+            colormap: self.colors.colormap.clone(),
+            contrast: self.colors.contrast,
+            saturation: self.colors.saturation,
         }
     }
 }
@@ -58,23 +70,25 @@ pub fn load_profile(path: &Path) -> Result<Profile, CoreError> {
 pub fn builtin_profile(name: &str) -> Option<Profile> {
     match name {
         "laptop" => Some(Profile {
-            spectrum: SpectrumConfig {
+            dsp: SpectrumConfig {
                 window_size: 4096,
                 hop_size: 512,
                 sample_rate: 48000,
                 log_bins: 128,
                 ..Default::default()
             },
+            colors: ColorSettings::default(),
             image: None,
             history: None,
         }),
         "default" => Some(Profile {
-            spectrum: SpectrumConfig::default(),
+            dsp: SpectrumConfig::default(),
+            colors: ColorSettings::default(),
             image: None,
             history: None,
         }),
         "high-resolution" => Some(Profile {
-            spectrum: SpectrumConfig {
+            dsp: SpectrumConfig {
                 window_size: 32768,
                 hop_size: 128,
                 sample_rate: 48000,
@@ -86,6 +100,7 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
                 peak_hold_decay: 0.95,
                 ..Default::default()
             },
+            colors: ColorSettings::default(),
             image: None,
             history: None,
         }),
@@ -189,29 +204,30 @@ mod tests {
     #[test]
     fn laptop_profile_has_smaller_window() {
         let p = builtin_profile("laptop").unwrap();
-        assert_eq!(p.spectrum.window_size, 4096);
-        assert_eq!(p.spectrum.log_bins, 128);
+        assert_eq!(p.dsp.window_size, 4096);
+        assert_eq!(p.dsp.log_bins, 128);
     }
 
     #[test]
     fn high_resolution_profile_has_large_window() {
         let p = builtin_profile("high-resolution").unwrap();
-        assert_eq!(p.spectrum.window_size, 32768);
-        assert_eq!(p.spectrum.log_bins, 2048);
+        assert_eq!(p.dsp.window_size, 32768);
+        assert_eq!(p.dsp.log_bins, 2048);
     }
 
     #[test]
     fn default_profile_matches_default_config() {
         let p = builtin_profile("default").unwrap();
         let default_cfg = SpectrumConfig::default();
-        assert_eq!(p.spectrum.window_size, default_cfg.window_size);
-        assert_eq!(p.spectrum.log_bins, 1024);
+        assert_eq!(p.dsp.window_size, default_cfg.window_size);
+        assert_eq!(p.dsp.log_bins, 1024);
     }
 
     #[test]
     fn to_image_config_defaults() {
         let profile = Profile {
-            spectrum: SpectrumConfig::default(),
+            dsp: SpectrumConfig::default(),
+            colors: ColorSettings::default(),
             image: None,
             history: None,
         };
@@ -225,14 +241,15 @@ mod tests {
     #[test]
     fn to_image_config_with_image_section() {
         let profile = Profile {
-            spectrum: SpectrumConfig::default(),
+            dsp: SpectrumConfig::default(),
+            colors: ColorSettings {
+                colormap: "inferno".into(),
+                ..Default::default()
+            },
             image: Some(ProfileImage {
                 width: 1920,
                 height: 400,
                 scroll_right_to_left: false,
-                colormap: "inferno".into(),
-                contrast: 1.0,
-                saturation: 1.0,
             }),
             history: None,
         };

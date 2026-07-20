@@ -1,7 +1,7 @@
 # Default profile — balanced quality and performance
 # Usage: cargo run --bin vividspektrum -- --config presets/default.toml
 
-[spectrum]
+[dsp]
 window_size = 8192
 hop_size = 1024
 sample_rate = 48000
@@ -22,4 +22,6 @@ freq_scale_exp = 0.5
 width = 800
 height = 800
 scroll_right_to_left = true
+
+[colors]
 colormap = "viridis"

@@ -3,7 +3,7 @@
 # A-weighting shows perceptual loudness, high bins for detail.
 # Usage: cargo run --bin vividspektrum -- --config presets/music-production.toml
 
-[spectrum]
+[dsp]
 window_size = 16384
 hop_size = 512
 sample_rate = 48000
@@ -26,4 +26,6 @@ centered = true
 width = 1000
 height = 300
 scroll_right_to_left = true
+
+[colors]
 colormap = "magma"

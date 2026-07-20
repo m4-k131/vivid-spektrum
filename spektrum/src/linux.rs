@@ -45,14 +45,13 @@ pub struct App {
 impl App {
     fn bootstrap(args: Args) -> Self {
         let profile = initial_profile(&args);
-        let mut spectrum = profile.spectrum.clone();
+        let mut spectrum = profile.dsp.clone();
         apply_spectrum_overrides(&args, &mut spectrum);
         let img = profile.image.as_ref();
         let colormap_name = args.colormap.as_deref()
-            .or(img.map(|i| i.colormap.as_str()))
-            .unwrap_or("viridis");
-        let contrast = args.contrast.or(img.map(|i| i.contrast)).unwrap_or(1.0);
-        let saturation = args.saturation.or(img.map(|i| i.saturation)).unwrap_or(1.0);
+            .unwrap_or(&profile.colors.colormap);
+        let contrast = args.contrast.unwrap_or(profile.colors.contrast);
+        let saturation = args.saturation.unwrap_or(profile.colors.saturation);
         let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
         let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
 
@@ -179,8 +178,9 @@ impl App {
             }
         });
 
+        let overlay_name = args.overlay.as_deref().unwrap_or(&profile.colors.overlay);
         let (overlay_lines, overlay_color, overlay_opacity, overlay_thickness) =
-            compute_overlay(args.overlay.as_deref().unwrap_or(""), &spectrum);
+            compute_overlay(overlay_name, &spectrum);
 
         let profile_name = args.config.as_ref()
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
@@ -213,7 +213,7 @@ impl App {
                 saturation,
                 colormap_name,
                 profile_name,
-                args.overlay.clone().unwrap_or_else(|| "none".to_string()),
+                overlay_name.to_string(),
                 source,
                 &spectrum,
                 history as f32,
@@ -340,16 +340,15 @@ fn compute_overlay(name_or_path: &str, spectrum: &SpectrumConfig) -> (Vec<f32>, 
 
 fn apply_profile(app: &mut App, name: &str) {
     let Some(profile) = load_profile_by_name(name) else { return; };
-    let mut spectrum = profile.spectrum.clone();
+    let mut spectrum = profile.dsp.clone();
     apply_spectrum_overrides(&app.args, &mut spectrum);
     spectrum.sample_rate = app.spectrum.sample_rate;
 
     let img = profile.image.as_ref();
     let colormap_name = app.args.colormap.as_deref()
-        .or(img.map(|i| i.colormap.as_str()))
-        .unwrap_or("viridis");
-    let contrast = app.args.contrast.or(img.map(|i| i.contrast)).unwrap_or(1.0);
-    let saturation = app.args.saturation.or(img.map(|i| i.saturation)).unwrap_or(1.0);
+        .unwrap_or(&profile.colors.colormap);
+    let contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
+    let saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
     let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
 
     let rtl = if app.args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
@@ -370,14 +369,8 @@ fn apply_profile(app: &mut App, name: &str) {
     app.settings.saturation = saturation;
     app.settings.colormap = colormap_name.to_string();
     app.settings.from_spectrum(&app.spectrum, history as f32);
-
-    if app.settings.overlay != "none" {
-        let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum);
-        app.prog.overlay_lines = lines;
-        app.prog.overlay_color = color;
-        app.prog.overlay_opacity = opacity;
-        app.prog.overlay_thickness = thickness;
-    }
+    let overlay_name = app.args.overlay.clone().unwrap_or_else(|| profile.colors.overlay.clone());
+    apply_overlay(app, &overlay_name);
 }
 
 fn apply_overlay(app: &mut App, name: &str) {
@@ -396,14 +389,17 @@ fn apply_overlay(app: &mut App, name: &str) {
 
 fn current_profile(app: &App) -> profiles::Profile {
     profiles::Profile {
-        spectrum: app.spectrum.clone(),
+        dsp: app.spectrum.clone(),
+        colors: profiles::ColorSettings {
+            colormap: app.settings.colormap.clone(),
+            contrast: app.settings.contrast,
+            saturation: app.settings.saturation,
+            overlay: app.settings.overlay.clone(),
+        },
         image: Some(profiles::ProfileImage {
             width: 800,
             height: 800,
             scroll_right_to_left: app.prog.dev.scroll_right_to_left,
-            colormap: app.settings.colormap.clone(),
-            contrast: app.settings.contrast,
-            saturation: app.settings.saturation,
         }),
         history: Some(app.prog.min_history),
     }

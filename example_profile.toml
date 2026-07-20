@@ -1,4 +1,4 @@
-[spectrum]
+[dsp]
 window_size = 20480
 hop_size = 256
 sample_rate = 48000
@@ -21,4 +21,6 @@ cqt_bins_per_octave = 12
 width = 800
 height = 200
 scroll_right_to_left = true
+
+[colors]
 colormap = "viridis"

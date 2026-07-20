@@ -131,7 +131,7 @@ mod inner {
             profiles::builtin_profile("default").unwrap()
         };
 
-        let spectrum = profile.spectrum;
+        let spectrum = profile.dsp;
         let img = profile.image.as_ref();
         let width = args.width.unwrap_or(img.map_or(0, |i| i.width));
         let height = args.height.unwrap_or(img.map_or(200, |i| i.height));

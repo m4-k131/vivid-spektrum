@@ -28,7 +28,7 @@ impl App {
         } else {
             profiles::builtin_profile("default").unwrap()
         };
-        let mut spectrum = profile.spectrum;
+        let mut spectrum = profile.dsp;
         if let Some(v) = args.log_bins { spectrum.log_bins = v; }
         if let Some(v) = args.window { spectrum.window_size = v; }
         if let Some(v) = args.hop { spectrum.hop_size = v; }
@@ -75,7 +75,7 @@ impl App {
         if let Some(v) = args.cqt_bpo { spectrum.cqt_bins_per_octave = v; }
         if let Some(v) = args.freq_scale_exp { spectrum.freq_scale_exp = v; }
         if args.centered { spectrum.centered = true; }
-        let colormap = resolve_colormap(args.colormap.as_deref().unwrap_or("viridis"))
+        let colormap = resolve_colormap(args.colormap.as_deref().unwrap_or(&profile.colors.colormap))
             .expect("invalid colormap");
         let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
         let img = profile.image.as_ref();
@@ -119,8 +119,8 @@ impl App {
                     scroll_right_to_left: rtl,
                 },
                 colormap_lut,
-                contrast: args.contrast.unwrap_or(1.0),
-                saturation: args.saturation.unwrap_or(1.0),
+                contrast: args.contrast.unwrap_or(profile.colors.contrast),
+                saturation: args.saturation.unwrap_or(profile.colors.saturation),
             },
         }
     }
