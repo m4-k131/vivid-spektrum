@@ -1,21 +1,38 @@
 use crate::error::CoreError;
 use crate::ring::SampleRing;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
 
-pub fn spawn_capture(target_device: Option<String>, ring: SampleRing) -> thread::JoinHandle<()> {
-    thread::spawn(move || {
-        if let Err(e) = run_capture(target_device, ring) {
-            eprintln!("cpal capture ended: {}", e);
-        }
-    })
+pub fn output_device_names() -> Vec<String> {
+    cpal::default_host()
+        .output_devices()
+        .map(|devices| devices.filter_map(|device| device.name().ok()).collect())
+        .unwrap_or_default()
 }
 
-fn run_capture(target_device: Option<String>, ring: SampleRing) -> Result<(), CoreError> {
+pub fn spawn_capture(target_device: Option<String>, ring: SampleRing) -> (thread::JoinHandle<()>, mpsc::Sender<String>) {
+    let (target_tx, target_rx) = mpsc::channel();
+    let worker = thread::spawn(move || {
+        let mut target = target_device;
+        loop {
+            match run_capture(target.clone(), ring.clone(), &target_rx) {
+                Ok(Some(next_target)) => target = Some(next_target),
+                Ok(None) => return,
+                Err(e) => {
+                    eprintln!("cpal capture ended: {e}");
+                    return;
+                }
+            }
+        }
+    });
+    (worker, target_tx)
+}
+
+fn run_capture(target_device: Option<String>, ring: SampleRing, target_rx: &mpsc::Receiver<String>) -> Result<Option<String>, CoreError> {
     let host = cpal::default_host();
     
-    let device = if let Some(name) = target_device {
+    let device = if let Some(name) = target_device.filter(|name| name != "default output") {
         host.devices()
             .map_err(|e| CoreError::Audio(format!("failed to enumerate devices: {}", e)))?
             .find(|d| {
@@ -66,7 +83,8 @@ fn run_capture(target_device: Option<String>, ring: SampleRing) -> Result<(), Co
         .play()
         .map_err(|e| CoreError::Audio(format!("failed to play stream: {}", e)))?;
 
-    loop {
-        thread::sleep(Duration::from_secs(1));
+    match target_rx.recv() {
+        Ok(next_target) => Ok(Some(next_target)),
+        Err(_) => Ok(None),
     }
 }
