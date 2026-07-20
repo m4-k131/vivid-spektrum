@@ -150,6 +150,7 @@ fn label_row<'a>(label: &'a str, tip: &'a str) -> Element<'a, SettingsMessage> {
 pub enum LibraryManager {
     Profiles,
     Colormaps,
+    DspSettings,
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +161,7 @@ pub enum SettingsMessage {
     SetSaturation(f32),
     SetColormap(String),
     SetProfile(String),
+    SetDspSettings(String),
     SetOverlay(String),
     SetSource(String),
     OpenManager(LibraryManager),
@@ -167,6 +169,8 @@ pub enum SettingsMessage {
     SetLibraryName(String),
     SaveProfile,
     DeleteProfile,
+    SaveDspSettings,
+    DeleteDspSettings,
     SaveColormap,
     DeleteColormap,
     SetColorStop(usize, u8, f32),
@@ -187,6 +191,7 @@ pub struct SettingsState {
     pub saturation: f32,
     pub colormap: String,
     pub profile: String,
+    pub dsp_settings: String,
     pub overlay: String,
     pub source: String,
     pub width: f32,
@@ -204,6 +209,7 @@ impl SettingsState {
         saturation: f32,
         colormap: impl Into<String>,
         profile: impl Into<String>,
+        dsp_settings: impl Into<String>,
         overlay: impl Into<String>,
         source: impl Into<String>,
         spectrum: &SpectrumConfig,
@@ -215,6 +221,7 @@ impl SettingsState {
             saturation,
             colormap: colormap.into(),
             profile: profile.into(),
+            dsp_settings: dsp_settings.into(),
             overlay: overlay.into(),
             source: source.into(),
             width: 280.0,
@@ -281,6 +288,7 @@ impl SettingsState {
         &'a self,
         colormaps: &'a [String],
         profiles: &'a [String],
+        dsp_settings: &'a [String],
         overlays: &'a [String],
         sources: &'a [String],
     ) -> Element<'a, SettingsMessage> {
@@ -296,6 +304,12 @@ impl SettingsState {
         .align_y(Alignment::Center);
 
         let controls = column![
+            label_row("Profile", "A profile combines colors, overlay, audio source, and DSP settings."),
+            row![
+                pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
+                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
+            ].spacing(6),
+            text("Colors · overlay · audio source · DSP").size(11),
             label_row("Colormap", "Color map used to map magnitude to color."),
             row![
                 pick_list(colormaps, Some(self.colormap.clone()), SettingsMessage::SetColormap).width(Length::Fill),
@@ -317,15 +331,15 @@ impl SettingsState {
             slider(0.0f32..=3.0f32, self.saturation, SettingsMessage::SetSaturation).step(0.05),
             label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning)."),
             pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay),
-            text("Advanced").size(14),
-            label_row("Audio source", "PipeWire/PulseAudio capture source. Microphones and output monitor sources are listed."),
+            label_row("Audio source", "PipeWire/PulseAudio capture source saved separately from DSP settings."),
             pick_list(sources, Some(self.source.clone()), SettingsMessage::SetSource)
                 .text_size(11)
                 .width(Length::Fill),
-            label_row("Profile preset", "Load a saved preset. You can still move the sliders afterwards."),
+            text("DSP").size(14),
+            label_row("DSP settings", "Reusable DSP slider presets. Applying one does not change profile colors, overlay, or audio source."),
             row![
-                pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
-                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
+                pick_list(dsp_settings, Some(self.dsp_settings.clone()), SettingsMessage::SetDspSettings).width(Length::Fill),
+                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::DspSettings)),
             ].spacing(6),
             label_row("Window function", "Time-domain window applied before FFT. Blackman-Harris reduces leakage."),
             pick_list(WINDOW_FUNCTIONS, Some(self.advanced.window_fn), SettingsMessage::SetWindowFn),
@@ -381,6 +395,7 @@ impl SettingsState {
         let (title, current, save, delete) = match manager {
             LibraryManager::Profiles => ("Manage profiles", &self.profile, SettingsMessage::SaveProfile, SettingsMessage::DeleteProfile),
             LibraryManager::Colormaps => ("Manage colormaps", &self.colormap, SettingsMessage::SaveColormap, SettingsMessage::DeleteColormap),
+            LibraryManager::DspSettings => ("Manage DSP settings", &self.dsp_settings, SettingsMessage::SaveDspSettings, SettingsMessage::DeleteDspSettings),
         };
         let mut body = column![
             row![text(title).size(20), Space::new().width(Length::Fill), button("Back").on_press(SettingsMessage::CloseManager)]
@@ -392,6 +407,7 @@ impl SettingsState {
         let protected = match manager {
             LibraryManager::Profiles => spektrum_core::profiles::is_builtin_profile(current),
             LibraryManager::Colormaps => spektrum_core::colormap::is_builtin_colormap(current),
+            LibraryManager::DspSettings => current == "custom" || spektrum_core::profiles::is_builtin_dsp_settings(current),
         };
         let save_selected = if protected {
             button("Built-in is protected")
