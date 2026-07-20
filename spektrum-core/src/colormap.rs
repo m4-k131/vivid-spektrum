@@ -151,7 +151,7 @@ pub fn delete_user_colormap(name: &str) -> Result<(), String> {
 }
 
 pub fn default_colormap() -> Colormap {
-    builtin_colormap("viridis").unwrap_or_else(|| Colormap {
+    builtin_colormap("magma").unwrap_or_else(|| Colormap {
         name: "fallback-grayscale".into(),
         stops: vec![(0.0, 0.0, 0.0, 0.0), (1.0, 1.0, 1.0, 1.0)],
     })
@@ -319,9 +319,9 @@ mod tests {
     }
 
     #[test]
-    fn default_colormap_is_viridis() {
+    fn default_colormap_is_magma() {
         let cmap = default_colormap();
-        assert_eq!(cmap.name(), "viridis");
+        assert_eq!(cmap.name(), "magma");
     }
 
     #[test]

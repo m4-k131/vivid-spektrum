@@ -24,7 +24,7 @@ pub struct ColorSettings {
 impl Default for ColorSettings {
     fn default() -> Self {
         Self {
-            colormap: "viridis".into(),
+            colormap: "magma".into(),
             contrast: 1.0,
             saturation: 1.0,
             overlay: "none".into(),
@@ -90,7 +90,7 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
             history: None,
         }),
         "default" => Some(Profile {
-            dsp: SpectrumConfig::default(),
+            dsp: builtin_dsp_settings("default").unwrap(),
             colors: ColorSettings::default(),
             audio: AudioSettings::default(),
             image: None,
@@ -206,7 +206,7 @@ pub fn builtin_dsp_settings(name: &str) -> Option<SpectrumConfig> {
     let mut settings = personal_dsp_settings();
     match name {
         "high-resolution" => {}
-        "medium-resolution" => settings.window_size = 4096,
+        "default" | "medium-resolution" => settings.window_size = 4096,
         "low-resolution" => settings.window_size = 2048,
         "fast-scrolling" => {
             settings.window_size = 4096;
@@ -244,6 +244,7 @@ pub fn builtin_dsp_settings(name: &str) -> Option<SpectrumConfig> {
 
 pub fn builtin_dsp_settings_names() -> &'static [&'static str] {
     &[
+        "default",
         "high-resolution",
         "medium-resolution",
         "low-resolution",
@@ -364,10 +365,14 @@ mod tests {
     fn dsp_settings_variants_inherit_personal_baseline() {
         let personal = builtin_dsp_settings("high-resolution").unwrap();
         let medium = builtin_dsp_settings("medium-resolution").unwrap();
+        let default = builtin_dsp_settings("default").unwrap();
         let fast = builtin_dsp_settings("fast-scrolling").unwrap();
         let wide = builtin_dsp_settings("wide-db-band").unwrap();
         let narrow = builtin_dsp_settings("narrow-frequency-band").unwrap();
         assert_eq!(medium.window_size, 4096);
+        assert_eq!(default.window_size, medium.window_size);
+        assert_eq!(default.hop_size, medium.hop_size);
+        assert_eq!(default.log_bins, medium.log_bins);
         assert_eq!(fast.hop_size, 512);
         assert_eq!(wide.db_floor, -120.0);
         assert_eq!(wide.db_ceil, -1.0);
@@ -408,11 +413,12 @@ mod tests {
     }
 
     #[test]
-    fn default_profile_matches_default_config() {
-        let p = builtin_profile("default").unwrap();
-        let default_cfg = SpectrumConfig::default();
-        assert_eq!(p.dsp.window_size, default_cfg.window_size);
-        assert_eq!(p.dsp.log_bins, 1024);
+    fn default_profile_uses_default_dsp_settings() {
+        let profile = builtin_profile("default").unwrap();
+        let settings = builtin_dsp_settings("default").unwrap();
+        assert_eq!(profile.dsp.window_size, settings.window_size);
+        assert_eq!(profile.dsp.hop_size, settings.hop_size);
+        assert_eq!(profile.dsp.log_bins, settings.log_bins);
     }
 
     #[test]
@@ -427,7 +433,7 @@ mod tests {
         let cfg = profile.to_image_config();
         assert_eq!(cfg.width, 800);
         assert_eq!(cfg.height, 800);
-        assert_eq!(cfg.colormap, "viridis");
+        assert_eq!(cfg.colormap, "magma");
         assert!(cfg.scroll_right_to_left);
     }
 

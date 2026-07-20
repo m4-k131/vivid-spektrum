@@ -182,7 +182,7 @@ impl App {
                 overlay_thickness,
             },
             settings: SettingsState::new(
-                false, contrast, saturation, colormap_name, profile_name, "custom",
+                false, contrast, saturation, colormap_name, profile_name, "default",
                 args.overlay.clone().unwrap_or_else(|| profile.colors.overlay.clone()),
                 source, &spectrum, history as f32,
             ),
@@ -454,7 +454,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 SettingsMessage::DeleteColormap => {
                     if spektrum_core::colormap::delete_user_colormap(&app.settings.colormap).is_ok() {
-                        apply_colormap(app, "viridis");
+                        apply_colormap(app, "magma");
                         refresh_libraries(app);
                     }
                 }

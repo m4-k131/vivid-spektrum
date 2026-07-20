@@ -216,7 +216,7 @@ impl App {
                 saturation,
                 colormap_name,
                 profile_name,
-                "custom",
+                "default",
                 overlay_name.to_string(),
                 source,
                 &spectrum,
@@ -706,7 +706,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     let name = app.settings.colormap.clone();
                     match spektrum_core::colormap::delete_user_colormap(&name) {
                         Ok(()) => {
-                            apply_colormap(app, "viridis");
+                            apply_colormap(app, "magma");
                             refresh_libraries(app);
                         }
                         Err(e) => eprintln!("failed to delete colormap: {e}"),

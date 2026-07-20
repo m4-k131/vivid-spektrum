@@ -19,7 +19,7 @@ pub struct SpectrogramImageConfig {
     pub saturation: f32,
 }
 
-fn default_colormap_name() -> String { "viridis".into() }
+fn default_colormap_name() -> String { "magma".into() }
 fn default_contrast() -> f32 { 1.0 }
 fn default_saturation() -> f32 { 1.0 }
 
@@ -30,7 +30,7 @@ impl Default for SpectrogramImageConfig {
             width: 800,
             height: 200,
             scroll_right_to_left: true,
-            colormap: "viridis".into(),
+            colormap: "magma".into(),
             contrast: 1.0,
             saturation: 1.0,
         }
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn spectrogram_image_config_default_colormap() {
         let cfg = SpectrogramImageConfig::default();
-        assert_eq!(cfg.colormap, "viridis");
+        assert_eq!(cfg.colormap, "magma");
         assert_eq!(cfg.width, 800);
         assert_eq!(cfg.height, 200);
     }
