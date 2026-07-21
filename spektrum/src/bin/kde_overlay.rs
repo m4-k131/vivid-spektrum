@@ -23,7 +23,7 @@ mod inner {
     pub struct Args {
         #[arg(long, help = "PipeWire target object id or name")]
         pub target_object: Option<String>,
-        #[arg(long, help = "Built-in profile: laptop, default, high-resolution")]
+        #[arg(long, help = "Built-in profile: default, personal")]
         pub profile: Option<String>,
         #[arg(long, help = "Path to a TOML profile file")]
         pub config: Option<std::path::PathBuf>,
@@ -131,7 +131,7 @@ mod inner {
             profiles::builtin_profile("default").unwrap()
         };
 
-        let spectrum = profile.spectrum;
+        let spectrum = profile.dsp;
         let img = profile.image.as_ref();
         let width = args.width.unwrap_or(img.map_or(0, |i| i.width));
         let height = args.height.unwrap_or(img.map_or(200, |i| i.height));

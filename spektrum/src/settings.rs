@@ -150,6 +150,7 @@ fn label_row<'a>(label: &'a str, tip: &'a str) -> Element<'a, SettingsMessage> {
 pub enum LibraryManager {
     Profiles,
     Colormaps,
+    DspSettings,
 }
 
 #[derive(Debug, Clone)]
@@ -160,6 +161,7 @@ pub enum SettingsMessage {
     SetSaturation(f32),
     SetColormap(String),
     SetProfile(String),
+    SetDspSettings(String),
     SetOverlay(String),
     SetSource(String),
     OpenManager(LibraryManager),
@@ -167,6 +169,8 @@ pub enum SettingsMessage {
     SetLibraryName(String),
     SaveProfile,
     DeleteProfile,
+    SaveDspSettings,
+    DeleteDspSettings,
     SaveColormap,
     DeleteColormap,
     SetColorStop(usize, u8, f32),
@@ -187,6 +191,7 @@ pub struct SettingsState {
     pub saturation: f32,
     pub colormap: String,
     pub profile: String,
+    pub dsp_settings: String,
     pub overlay: String,
     pub source: String,
     pub width: f32,
@@ -204,6 +209,7 @@ impl SettingsState {
         saturation: f32,
         colormap: impl Into<String>,
         profile: impl Into<String>,
+        dsp_settings: impl Into<String>,
         overlay: impl Into<String>,
         source: impl Into<String>,
         spectrum: &SpectrumConfig,
@@ -215,6 +221,7 @@ impl SettingsState {
             saturation,
             colormap: colormap.into(),
             profile: profile.into(),
+            dsp_settings: dsp_settings.into(),
             overlay: overlay.into(),
             source: source.into(),
             width: 280.0,
@@ -281,11 +288,13 @@ impl SettingsState {
         &'a self,
         colormaps: &'a [String],
         profiles: &'a [String],
+        dsp_settings: &'a [String],
         overlays: &'a [String],
         sources: &'a [String],
+        paused: bool,
     ) -> Element<'a, SettingsMessage> {
         if let Some(manager) = &self.manager {
-            return self.manager_view(manager);
+            return self.manager_view(manager, paused);
         }
         let header = row![
             text("vividspektrum").size(20),
@@ -295,7 +304,21 @@ impl SettingsState {
         .spacing(10)
         .align_y(Alignment::Center);
 
+        let band_agg: Element<'a, SettingsMessage> = if self.advanced.transform == Transform::Stft {
+            pick_list(AGGREGATIONS, Some(self.advanced.band_aggregation), SettingsMessage::SetBandAggregation).into()
+        } else {
+            text("CQT uses constant-Q triangular bands.").size(11).into()
+        };
+
         let controls = column![
+            text("Right-click or press M to toggle this menu.").size(11),
+            if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
+            label_row("Profile", "A profile combines colors, overlay, audio source, and DSP settings."),
+            row![
+                pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
+                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
+            ].spacing(6),
+            text("Colors · overlay · audio source · DSP").size(11),
             label_row("Colormap", "Color map used to map magnitude to color."),
             row![
                 pick_list(colormaps, Some(self.colormap.clone()), SettingsMessage::SetColormap).width(Length::Fill),
@@ -317,22 +340,22 @@ impl SettingsState {
             slider(0.0f32..=3.0f32, self.saturation, SettingsMessage::SetSaturation).step(0.05),
             label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning)."),
             pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay),
-            text("Advanced").size(14),
-            label_row("Audio source", "PipeWire/PulseAudio capture source. Microphones and output monitor sources are listed."),
+            label_row("Audio source", "PipeWire/PulseAudio capture source saved separately from DSP settings."),
             pick_list(sources, Some(self.source.clone()), SettingsMessage::SetSource)
                 .text_size(11)
                 .width(Length::Fill),
-            label_row("Profile preset", "Load a saved preset. You can still move the sliders afterwards."),
+            text("DSP").size(14),
+            label_row("DSP settings", "Reusable DSP slider presets. Applying one does not change profile colors, overlay, or audio source."),
             row![
-                pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
-                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
+                pick_list(dsp_settings, Some(self.dsp_settings.clone()), SettingsMessage::SetDspSettings).width(Length::Fill),
+                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::DspSettings)),
             ].spacing(6),
             label_row("Window function", "Time-domain window applied before FFT. Blackman-Harris reduces leakage."),
             pick_list(WINDOW_FUNCTIONS, Some(self.advanced.window_fn), SettingsMessage::SetWindowFn),
             label_row("Transform", "STFT: equal time/frequency resolution. CQT: musical pitch spacing."),
             pick_list(TRANSFORMS, Some(self.advanced.transform), SettingsMessage::SetTransform),
             label_row("Band aggregation", "How FFT bins are combined into each log-frequency band."),
-            pick_list(AGGREGATIONS, Some(self.advanced.band_aggregation), SettingsMessage::SetBandAggregation),
+            band_agg,
             label_row("Weighting", "A/C frequency-weighting curves (IEC 61672) or no weighting."),
             pick_list(WEIGHTINGS, Some(self.advanced.weighting), SettingsMessage::SetWeighting),
             row![
@@ -345,7 +368,11 @@ impl SettingsState {
             .align_y(Alignment::Center),
             self.slider_row(DspSlider::WindowSize),
             self.slider_row(DspSlider::HopSize),
-            self.slider_row(DspSlider::LogBins),
+            if self.advanced.transform == Transform::Stft {
+                self.slider_row(DspSlider::LogBins)
+            } else {
+                text("").into()
+            },
             self.slider_row(DspSlider::FMin),
             self.slider_row(DspSlider::FMax),
             self.slider_row(DspSlider::DbFloor),
@@ -354,8 +381,16 @@ impl SettingsState {
             self.slider_row(DspSlider::Gamma),
             self.slider_row(DspSlider::TemporalAlpha),
             self.slider_row(DspSlider::PeakDecay),
-            self.slider_row(DspSlider::FreqScaleExp),
-            self.slider_row(DspSlider::CqtBins),
+            if self.advanced.transform == Transform::Stft {
+                self.slider_row(DspSlider::FreqScaleExp)
+            } else {
+                text("").into()
+            },
+            if self.advanced.transform == Transform::Cqt {
+                self.slider_row(DspSlider::CqtBins)
+            } else {
+                text("").into()
+            },
             self.slider_row(DspSlider::History),
         ]
         .spacing(8)
@@ -377,21 +412,25 @@ impl SettingsState {
             .into()
     }
 
-    fn manager_view<'a>(&'a self, manager: &LibraryManager) -> Element<'a, SettingsMessage> {
+    fn manager_view<'a>(&'a self, manager: &LibraryManager, paused: bool) -> Element<'a, SettingsMessage> {
         let (title, current, save, delete) = match manager {
             LibraryManager::Profiles => ("Manage profiles", &self.profile, SettingsMessage::SaveProfile, SettingsMessage::DeleteProfile),
             LibraryManager::Colormaps => ("Manage colormaps", &self.colormap, SettingsMessage::SaveColormap, SettingsMessage::DeleteColormap),
+            LibraryManager::DspSettings => ("Manage DSP settings", &self.dsp_settings, SettingsMessage::SaveDspSettings, SettingsMessage::DeleteDspSettings),
         };
         let mut body = column![
             row![text(title).size(20), Space::new().width(Length::Fill), button("Back").on_press(SettingsMessage::CloseManager)]
                 .align_y(Alignment::Center),
             text(format!("Selected: {current}")).size(12),
+            text("Right-click or press M to toggle this menu.").size(11),
+            if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
             text("Built-ins are protected. Enter a new name to save a copy.").size(12),
             text_input("new name (optional)", &self.library_name).on_input(SettingsMessage::SetLibraryName),
         ];
         let protected = match manager {
             LibraryManager::Profiles => spektrum_core::profiles::is_builtin_profile(current),
             LibraryManager::Colormaps => spektrum_core::colormap::is_builtin_colormap(current),
+            LibraryManager::DspSettings => current == "custom" || spektrum_core::profiles::is_builtin_dsp_settings(current),
         };
         let save_selected = if protected {
             button("Built-in is protected")

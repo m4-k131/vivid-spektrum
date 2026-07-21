@@ -2,7 +2,7 @@
 # Very high resolution, heavy smoothing, fast refresh.
 # Usage: cargo run --bin vividspektrum -- --config presets/high-resolution.toml
 
-[spectrum]
+[dsp]
 window_size = 32768
 hop_size = 128
 sample_rate = 48000
@@ -23,4 +23,6 @@ freq_scale_exp = 0.5
 width = 1200
 height = 400
 scroll_right_to_left = true
+
+[colors]
 colormap = "inferno"

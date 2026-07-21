@@ -2,7 +2,7 @@
 # Suitable for battery-powered use or slow machines.
 # Usage: cargo run --bin vividspektrum -- --config presets/laptop.toml
 
-[spectrum]
+[dsp]
 window_size = 4096
 hop_size = 2048
 sample_rate = 48000
@@ -23,4 +23,6 @@ freq_scale_exp = 0.5
 width = 600
 height = 150
 scroll_right_to_left = true
+
+[colors]
 colormap = "viridis"

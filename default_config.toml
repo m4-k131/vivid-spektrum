@@ -10,7 +10,7 @@
 #
 # ═══════════════════════════════════════════════════════════════════════════════
 
-[spectrum]
+[dsp]
 
 # ─── FFT / STFT ──────────────────────────────────────────────────────────────
 
@@ -157,6 +157,8 @@
 #   false = spectrogram scrolls top-to-bottom (legacy vertical mode)
 # Default: true
 # scroll_right_to_left = true
+
+[colors]
 
 # Colormap name or path to a custom .toml colormap file.
 # Builtin options: viridis, inferno, magma, plasma, turbo, grayscale, heat,

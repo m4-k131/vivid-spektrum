@@ -2,7 +2,7 @@ use crate::Args;
 use spektrum::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 use spektrum::settings::{DspSlider, SettingsMessage, SettingsState};
 use spektrum::spectrogram::SpectrogramProgram;
-use spektrum_core::{overlay, profiles, resolve_colormap, sample_ring_pair, SpectrumConfig, SpectrumProcessor};
+use spektrum_core::{overlay, profiles, resolve_colormap, sample_ring_pair, spectrum_output_bins, SpectrumConfig, SpectrumProcessor};
 use iced::widget::{container, stack};
 use iced::widget::shader::Shader;
 use iced::{Element, Event, Length, Size, Subscription, Task};
@@ -37,6 +37,7 @@ pub struct App {
     restart_tx: mpsc::Sender<DspCommand>,
     colormaps: Vec<String>,
     profiles: Vec<String>,
+    dsp_settings: Vec<String>,
     overlays: Vec<String>,
     sources: Vec<String>,
     source_targets: HashMap<String, String>,
@@ -45,20 +46,23 @@ pub struct App {
 impl App {
     fn bootstrap(args: Args) -> Self {
         let profile = initial_profile(&args);
-        let mut spectrum = profile.spectrum.clone();
+        let mut spectrum = profile.dsp.clone();
         apply_spectrum_overrides(&args, &mut spectrum);
         let img = profile.image.as_ref();
         let colormap_name = args.colormap.as_deref()
-            .or(img.map(|i| i.colormap.as_str()))
-            .unwrap_or("viridis");
-        let contrast = args.contrast.or(img.map(|i| i.contrast)).unwrap_or(1.0);
-        let saturation = args.saturation.or(img.map(|i| i.saturation)).unwrap_or(1.0);
-        let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
+            .unwrap_or(&profile.colors.colormap);
+        let contrast = args.contrast.unwrap_or(profile.colors.contrast);
+        let saturation = args.saturation.unwrap_or(profile.colors.saturation);
+        let colormap = resolve_colormap(colormap_name).unwrap_or_else(|error| {
+        eprintln!("{error}; using default colormap");
+        spektrum_core::default_colormap()
+    });
         let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
 
         let rtl = if args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
         let history = effective_spectrogram_history(args.history);
         let capture_target = args.target_object.clone()
+            .or_else(|| profile.audio.source.clone())
             .or_else(spektrum_core::pipewire::default_pulse_output_monitor)
             .or_else(spektrum_core::pipewire::default_pulse_source);
         let mut source_targets = HashMap::new();
@@ -179,8 +183,9 @@ impl App {
             }
         });
 
+        let overlay_name = args.overlay.as_deref().unwrap_or(&profile.colors.overlay);
         let (overlay_lines, overlay_color, overlay_opacity, overlay_thickness) =
-            compute_overlay(args.overlay.as_deref().unwrap_or(""), &spectrum);
+            compute_overlay(overlay_name, &spectrum);
 
         let profile_name = args.config.as_ref()
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
@@ -189,12 +194,13 @@ impl App {
 
         let colormaps = spektrum_core::all_colormap_names();
         let profiles = list_profile_names();
+        let dsp_settings = list_dsp_settings_names();
         let overlays = list_overlay_names();
 
         Self {
             prog: SpectrogramProgram {
                 pending_spectra,
-                bins: spectrum.log_bins as u32,
+                bins: spectrum_output_bins(&spectrum) as u32,
                 min_history: history,
                 paused: false,
                 dev: SpectrogramDevConfig { scroll_right_to_left: rtl },
@@ -208,12 +214,13 @@ impl App {
                 overlay_thickness,
             },
             settings: SettingsState::new(
-                false,
+                true,
                 contrast,
                 saturation,
                 colormap_name,
                 profile_name,
-                args.overlay.clone().unwrap_or_else(|| "none".to_string()),
+                "default",
+                overlay_name.to_string(),
                 source,
                 &spectrum,
                 history as f32,
@@ -225,6 +232,7 @@ impl App {
             restart_tx,
             colormaps,
             profiles,
+            dsp_settings,
             overlays,
             sources,
             source_targets,
@@ -249,6 +257,12 @@ fn load_profile_by_name(name: &str) -> Option<profiles::Profile> {
 
 fn list_profile_names() -> Vec<String> {
     profiles::list_profile_names()
+}
+
+fn list_dsp_settings_names() -> Vec<String> {
+    let mut names = profiles::list_dsp_settings_names();
+    names.push("custom".to_string());
+    names
 }
 
 fn source_label(index: usize, source: &str) -> String {
@@ -340,17 +354,19 @@ fn compute_overlay(name_or_path: &str, spectrum: &SpectrumConfig) -> (Vec<f32>, 
 
 fn apply_profile(app: &mut App, name: &str) {
     let Some(profile) = load_profile_by_name(name) else { return; };
-    let mut spectrum = profile.spectrum.clone();
+    let mut spectrum = profile.dsp.clone();
     apply_spectrum_overrides(&app.args, &mut spectrum);
     spectrum.sample_rate = app.spectrum.sample_rate;
 
     let img = profile.image.as_ref();
     let colormap_name = app.args.colormap.as_deref()
-        .or(img.map(|i| i.colormap.as_str()))
-        .unwrap_or("viridis");
-    let contrast = app.args.contrast.or(img.map(|i| i.contrast)).unwrap_or(1.0);
-    let saturation = app.args.saturation.or(img.map(|i| i.saturation)).unwrap_or(1.0);
-    let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
+        .unwrap_or(&profile.colors.colormap);
+    let contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
+    let saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
+    let colormap = resolve_colormap(colormap_name).unwrap_or_else(|error| {
+        eprintln!("{error}; using default colormap");
+        spektrum_core::default_colormap()
+    });
 
     let rtl = if app.args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
     let history = profile.history.unwrap_or(app.settings.history.max(1.0) as u32).max(1);
@@ -358,7 +374,7 @@ fn apply_profile(app: &mut App, name: &str) {
     app.restart_tx.send(DspCommand::Restart(spectrum.clone(), history)).ok();
 
     app.spectrum = spectrum;
-    app.prog.bins = app.spectrum.log_bins as u32;
+    app.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
     app.prog.min_history = history;
     app.prog.dev.scroll_right_to_left = rtl;
     app.prog.contrast = contrast;
@@ -366,17 +382,34 @@ fn apply_profile(app: &mut App, name: &str) {
     app.prog.colormap_lut = Arc::new(colormap.build_lut_rgba(256));
 
     app.settings.profile = name.to_string();
+    app.settings.dsp_settings = "custom".to_string();
     app.settings.contrast = contrast;
     app.settings.saturation = saturation;
     app.settings.colormap = colormap_name.to_string();
     app.settings.from_spectrum(&app.spectrum, history as f32);
+    let overlay_name = app.args.overlay.clone().unwrap_or_else(|| profile.colors.overlay.clone());
+    apply_overlay(app, &overlay_name);
+    if app.args.target_object.is_none() {
+        if let Some(source) = profile.audio.source.as_deref() {
+            apply_capture_source(app, source);
+        }
+    }
+}
 
-    if app.settings.overlay != "none" {
-        let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum);
-        app.prog.overlay_lines = lines;
-        app.prog.overlay_color = color;
-        app.prog.overlay_opacity = opacity;
-        app.prog.overlay_thickness = thickness;
+fn apply_capture_source(app: &mut App, target: &str) {
+    match spektrum_core::pipewire::move_capture_to_pulse_source(target) {
+        Ok(()) => {
+            let source = app.source_targets.iter()
+                .find_map(|(label, value)| (value == target).then(|| label.clone()))
+                .unwrap_or_else(|| {
+                    let label = source_label(app.sources.len(), target);
+                    app.source_targets.insert(label.clone(), target.to_string());
+                    app.sources.push(label.clone());
+                    label
+                });
+            app.settings.source = source;
+        }
+        Err(e) => eprintln!("failed to change audio source: {e}"),
     }
 }
 
@@ -396,14 +429,20 @@ fn apply_overlay(app: &mut App, name: &str) {
 
 fn current_profile(app: &App) -> profiles::Profile {
     profiles::Profile {
-        spectrum: app.spectrum.clone(),
+        dsp: app.spectrum.clone(),
+        colors: profiles::ColorSettings {
+            colormap: app.settings.colormap.clone(),
+            contrast: app.settings.contrast,
+            saturation: app.settings.saturation,
+            overlay: app.settings.overlay.clone(),
+        },
+        audio: profiles::AudioSettings {
+            source: app.source_targets.get(&app.settings.source).cloned(),
+        },
         image: Some(profiles::ProfileImage {
             width: 800,
             height: 800,
             scroll_right_to_left: app.prog.dev.scroll_right_to_left,
-            colormap: app.settings.colormap.clone(),
-            contrast: app.settings.contrast,
-            saturation: app.settings.saturation,
         }),
         history: Some(app.prog.min_history),
     }
@@ -411,7 +450,22 @@ fn current_profile(app: &App) -> profiles::Profile {
 
 fn refresh_libraries(app: &mut App) {
     app.profiles = list_profile_names();
+    app.dsp_settings = list_dsp_settings_names();
     app.colormaps = spektrum_core::all_colormap_names();
+}
+
+fn apply_dsp_settings(app: &mut App, name: &str) {
+    if name == "custom" {
+        app.settings.dsp_settings = name.to_string();
+        return;
+    }
+    let Ok(mut spectrum) = profiles::resolve_dsp_settings(name) else { return; };
+    apply_spectrum_overrides(&app.args, &mut spectrum);
+    spectrum.sample_rate = app.spectrum.sample_rate;
+    app.spectrum = spectrum;
+    app.settings.from_spectrum(&app.spectrum, app.prog.min_history as f32);
+    app.settings.dsp_settings = name.to_string();
+    restart_dsp(app);
 }
 
 fn apply_colormap(app: &mut App, name: &str) {
@@ -432,6 +486,7 @@ fn apply_edited_colormap(app: &mut App) {
 }
 
 fn apply_advanced(app: &mut App, field: DspSlider) {
+    app.settings.dsp_settings = "custom".to_string();
     if field == DspSlider::History {
         app.prog.min_history = app.settings.history.max(1.0) as u32;
         app.restart_tx.send(DspCommand::SetHistory(app.prog.min_history)).ok();
@@ -447,7 +502,7 @@ fn apply_advanced(app: &mut App, field: DspSlider) {
     } else {
         let history = app.prog.min_history;
         app.restart_tx.send(DspCommand::Restart(app.spectrum.clone(), history)).ok();
-        app.prog.bins = app.spectrum.log_bins as u32;
+        app.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
     }
 
     if app.settings.overlay != "none" {
@@ -481,7 +536,7 @@ fn copy_spectrum_field(dst: &mut SpectrumConfig, src: &SpectrumConfig, field: Ds
 fn restart_dsp(app: &mut App) {
     let history = app.prog.min_history;
     app.restart_tx.send(DspCommand::Restart(app.spectrum.clone(), history)).ok();
-    app.prog.bins = app.spectrum.log_bins as u32;
+    app.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
     let overlay = app.settings.overlay.clone();
     apply_overlay(app, &overlay);
 }
@@ -543,6 +598,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 SettingsMessage::SetColormap(name) => apply_colormap(app, &name),
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
+                SettingsMessage::SetDspSettings(name) => apply_dsp_settings(app, &name),
                 SettingsMessage::SetOverlay(name) => apply_overlay(app, &name),
                 SettingsMessage::OpenManager(manager) => {
                     app.settings.library_name.clear();
@@ -577,6 +633,30 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                             refresh_libraries(app);
                         }
                         Err(e) => eprintln!("failed to delete profile: {e}"),
+                    }
+                }
+                SettingsMessage::SaveDspSettings => {
+                    let name = if app.settings.library_name.trim().is_empty() {
+                        app.settings.dsp_settings.clone()
+                    } else {
+                        app.settings.library_name.trim().to_string()
+                    };
+                    if let Err(e) = profiles::save_user_dsp_settings(&name, &app.spectrum) {
+                        eprintln!("failed to save DSP settings: {e}");
+                    } else {
+                        app.settings.dsp_settings = name;
+                        app.settings.library_name.clear();
+                        refresh_libraries(app);
+                    }
+                }
+                SettingsMessage::DeleteDspSettings => {
+                    let name = app.settings.dsp_settings.clone();
+                    match profiles::delete_user_dsp_settings(&name) {
+                        Ok(()) => {
+                            app.settings.dsp_settings = "custom".to_string();
+                            refresh_libraries(app);
+                        }
+                        Err(e) => eprintln!("failed to delete DSP settings: {e}"),
                     }
                 }
                 SettingsMessage::SaveColormap => {
@@ -632,44 +712,46 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     let name = app.settings.colormap.clone();
                     match spektrum_core::colormap::delete_user_colormap(&name) {
                         Ok(()) => {
-                            apply_colormap(app, "viridis");
+                            apply_colormap(app, "magma");
                             refresh_libraries(app);
                         }
                         Err(e) => eprintln!("failed to delete colormap: {e}"),
                     }
                 }
                 SettingsMessage::SetSource(source) => {
-                    let Some(target) = app.source_targets.get(&source) else {
+                    let Some(target) = app.source_targets.get(&source).cloned() else {
                         return Task::none();
                     };
-                    match spektrum_core::pipewire::move_capture_to_pulse_source(target) {
-                        Ok(()) => app.settings.source = source,
-                        Err(e) => eprintln!("failed to change audio source: {e}"),
-                    }
+                    apply_capture_source(app, &target);
                 }
                 SettingsMessage::AdvancedSlider(field, value) => app.settings.set(field, value),
                 SettingsMessage::AdvancedSliderRelease(field) => apply_advanced(app, field),
                 SettingsMessage::SetWindowFn(w) => {
+                    app.settings.dsp_settings = "custom".to_string();
                     app.settings.advanced.window_fn = w;
                     app.spectrum.window_fn = w;
                     restart_dsp(app);
                 }
                 SettingsMessage::SetBandAggregation(a) => {
+                    app.settings.dsp_settings = "custom".to_string();
                     app.settings.advanced.band_aggregation = a;
                     app.spectrum.band_aggregation = a;
                     restart_dsp(app);
                 }
                 SettingsMessage::SetWeighting(w) => {
+                    app.settings.dsp_settings = "custom".to_string();
                     app.settings.advanced.weighting = w;
                     app.spectrum.weighting = w;
                     restart_dsp(app);
                 }
                 SettingsMessage::SetTransform(t) => {
+                    app.settings.dsp_settings = "custom".to_string();
                     app.settings.advanced.transform = t;
                     app.spectrum.transform = t;
                     restart_dsp(app);
                 }
                 SettingsMessage::SetCentered(c) => {
+                    app.settings.dsp_settings = "custom".to_string();
                     app.settings.advanced.centered = c;
                     app.spectrum.centered = c;
                     restart_dsp(app);
@@ -691,7 +773,7 @@ fn view(app: &App) -> Element<'_, Message> {
         return spectrogram.into();
     }
 
-    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.overlays, &app.sources)
+    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.dsp_settings, &app.overlays, &app.sources, app.prog.paused)
         .map(Message::Settings);
     let panel: Element<'_, Message> = container(menu)
         .width(Length::Fill)

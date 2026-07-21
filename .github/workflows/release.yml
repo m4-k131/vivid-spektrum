@@ -62,7 +62,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path vividspektrum-windows
           Copy-Item target\release\vividspektrum.exe vividspektrum-windows\vividspektrum.exe
           Copy-Item target\release\audio_to_png.exe vividspektrum-windows\audio_to_png.exe
-          Copy-Item -Recurse presets colormaps overlays vividspektrum-windows
+          Copy-Item -Recurse -Path presets,colormaps,overlays -Destination vividspektrum-windows
           Compress-Archive -Path vividspektrum-windows -DestinationPath vividspektrum-windows-x86_64.zip
 
       - name: Upload artifact

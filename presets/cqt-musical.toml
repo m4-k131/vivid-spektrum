@@ -3,7 +3,7 @@
 # Great for seeing chords, melody lines, and harmonic structure.
 # Usage: cargo run --bin vividspektrum -- --config presets/cqt-musical.toml
 
-[spectrum]
+[dsp]
 window_size = 8192
 hop_size = 512
 sample_rate = 48000
@@ -26,4 +26,6 @@ freq_scale_exp = 0.5
 width = 900
 height = 300
 scroll_right_to_left = true
+
+[colors]
 colormap = "catppuccin-mocha"

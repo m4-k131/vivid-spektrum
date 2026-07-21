@@ -189,6 +189,17 @@ impl Default for SpectrumConfig {
     }
 }
 
+pub fn spectrum_output_bins(cfg: &SpectrumConfig) -> usize {
+    if cfg.transform == Transform::Cqt {
+        let f_min = cfg.f_min_hz.max(1.0);
+        let nyquist = 0.499 * cfg.sample_rate as f32;
+        let f_max = cfg.f_max_hz.min(nyquist).max(f_min + 1.0);
+        ((f_max / f_min).log2() * cfg.cqt_bins_per_octave.max(1) as f32).ceil().max(1.0) as usize
+    } else {
+        cfg.log_bins.max(1)
+    }
+}
+
 pub struct SpectrumProcessor {
     cfg: SpectrumConfig,
     r2c: Arc<dyn RealToComplex<f32>>,
@@ -250,11 +261,7 @@ impl SpectrumProcessor {
         self.cfg.peak_hold_decay = cfg.peak_hold_decay;
     }
     pub fn log_bins(&self) -> usize {
-        if self.cfg.transform == Transform::Cqt {
-            self.cqt_weights.len().max(1)
-        } else {
-            self.cfg.log_bins
-        }
+        spectrum_output_bins(&self.cfg)
     }
     pub fn total_samples_pushed(&self) -> u64 {
         self.total_samples_pushed
@@ -304,9 +311,8 @@ impl SpectrumProcessor {
                 let u = ((db - self.cfg.db_floor) / (self.cfg.db_ceil - self.cfg.db_floor).max(1e-9)).clamp(0.0, 1.0);
                 col[i] = u;
             }
-            return;
-        }
-        match self.cfg.band_aggregation {
+        } else {
+            match self.cfg.band_aggregation {
             BandAggregation::Nearest => {
                 let exp = self.cfg.freq_scale_exp.max(0.1);
                 for i in 0..col.len() {
@@ -339,6 +345,7 @@ impl SpectrumProcessor {
                     *val = u;
                 }
             }
+        }
         }
         if self.cfg.freq_smoothing_sigma > 0.0 {
             let orig = col.to_vec();
@@ -516,10 +523,10 @@ fn build_cqt_weights(cfg: &SpectrumConfig) -> Vec<Vec<(usize, f32)>> {
     let f_min = cfg.f_min_hz.max(1.0);
     let sr = cfg.sample_rate as f32;
     let nyq = 0.499 * sr;
-    let f_max = cfg.f_max_hz.min(nyq).max(f_min + 1.0);
+    let _f_max = cfg.f_max_hz.min(nyq).max(f_min + 1.0);
     let nfft = cfg.window_size;
     let kmax = (nfft / 2).max(1);
-    let num_bins = ((f_max / f_min).log2() * bpo).ceil() as usize;
+    let num_bins = spectrum_output_bins(cfg);
     let mut weights = Vec::with_capacity(num_bins);
     for k_cqt in 0..num_bins {
         let fc = f_min * 2.0f32.powf(k_cqt as f32 / bpo);
@@ -905,6 +912,53 @@ mod tests {
                 assert!(v >= 0.0 && v <= 1.0, "values must stay in [0,1] after gamma");
             }
         }
+    }
+
+    #[test]
+    fn cqt_output_size_matches_effective_bin_count() {
+        let cfg = SpectrumConfig {
+            window_size: 2048,
+            hop_size: 1024,
+            transform: Transform::Cqt,
+            cqt_bins_per_octave: 24,
+            f_min_hz: 40.0,
+            f_max_hz: 12000.0,
+            ..Default::default()
+        };
+        let expected = spectrum_output_bins(&cfg);
+        let mut processor = SpectrumProcessor::new(cfg).unwrap();
+        let samples: Vec<f32> = (0..4096).map(|i| (i as f32 * 0.01).sin()).collect();
+        let mut columns = Vec::new();
+        processor.push_samples(&samples, &mut columns);
+        assert!(!columns.is_empty());
+        assert!(columns.iter().all(|column| column.len() == expected));
+    }
+
+    #[test]
+    fn cqt_gamma_below_one_brightens() {
+        let base = SpectrumConfig {
+            window_size: 2048,
+            hop_size: 1024,
+            transform: Transform::Cqt,
+            cqt_bins_per_octave: 12,
+            freq_smoothing_sigma: 0.0,
+            amplitude_gamma: 1.0,
+            temporal_alpha: 0.0,
+            peak_hold_decay: 0.0,
+            ..Default::default()
+        };
+        let mut brightened = base.clone();
+        brightened.amplitude_gamma = 0.5;
+        let samples: Vec<f32> = (0..4096).map(|i| (i as f32 * 0.01).sin()).collect();
+        let mut base_processor = SpectrumProcessor::new(base).unwrap();
+        let mut bright_processor = SpectrumProcessor::new(brightened).unwrap();
+        let mut base_columns = Vec::new();
+        let mut bright_columns = Vec::new();
+        base_processor.push_samples(&samples, &mut base_columns);
+        bright_processor.push_samples(&samples, &mut bright_columns);
+        let base_sum: f32 = base_columns.last().unwrap().iter().sum();
+        let bright_sum: f32 = bright_columns.last().unwrap().iter().sum();
+        assert!(bright_sum > base_sum);
     }
 
     #[test]

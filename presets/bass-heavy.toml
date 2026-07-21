@@ -3,7 +3,7 @@
 # Good for electronic music, hip-hop, bass guitar monitoring.
 # Usage: cargo run --bin vividspektrum -- --config presets/bass-heavy.toml
 
-[spectrum]
+[dsp]
 window_size = 16384
 hop_size = 512
 sample_rate = 48000
@@ -24,4 +24,6 @@ freq_scale_exp = 1.5
 width = 800
 height = 250
 scroll_right_to_left = true
+
+[colors]
 colormap = "heat"
