@@ -1,0 +1,37 @@
+name = "paper-ember"
+
+[[stops]]
+position = 0.0
+r = 1.0
+g = 1.0
+b = 1.0
+
+[[stops]]
+position = 0.18
+r = 1.0
+g = 0.95
+b = 0.86
+
+[[stops]]
+position = 0.38
+r = 0.98
+g = 0.72
+b = 0.48
+
+[[stops]]
+position = 0.58
+r = 0.90
+g = 0.36
+b = 0.25
+
+[[stops]]
+position = 0.78
+r = 0.58
+g = 0.10
+b = 0.18
+
+[[stops]]
+position = 1.0
+r = 0.16
+g = 0.02
+b = 0.06

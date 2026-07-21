@@ -20,7 +20,7 @@ use symphonia::default::{get_codecs, get_probe};
 struct Args {
     input: PathBuf,
     output: PathBuf,
-    #[arg(long, help = "Built-in profile: laptop, default, high-resolution")]
+    #[arg(long, help = "Built-in profile: default, personal")]
     profile: Option<String>,
     #[arg(long, help = "Path to a TOML profile file")]
     config: Option<PathBuf>,

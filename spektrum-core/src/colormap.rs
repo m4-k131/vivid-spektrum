@@ -314,6 +314,19 @@ mod tests {
     }
 
     #[test]
+    fn light_and_tinted_colormaps_have_expected_endpoints() {
+        for name in ["paper-ink", "paper-ember"] {
+            let lut = builtin_colormap(name).unwrap().build_lut(256);
+            assert_eq!(lut[0], [255, 255, 255]);
+            assert!(lut[255].iter().all(|channel| *channel < 64));
+        }
+        let lut = builtin_colormap("sage-glow").unwrap().build_lut(256);
+        assert_ne!(lut[0], [0, 0, 0]);
+        assert_ne!(lut[0], [255, 255, 255]);
+        assert_eq!(lut[255], [255, 255, 255]);
+    }
+
+    #[test]
     fn unknown_colormap_returns_none() {
         assert!(builtin_colormap("nonexistent").is_none());
     }

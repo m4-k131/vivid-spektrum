@@ -291,9 +291,10 @@ impl SettingsState {
         dsp_settings: &'a [String],
         overlays: &'a [String],
         sources: &'a [String],
+        paused: bool,
     ) -> Element<'a, SettingsMessage> {
         if let Some(manager) = &self.manager {
-            return self.manager_view(manager);
+            return self.manager_view(manager, paused);
         }
         let header = row![
             text("vividspektrum").size(20),
@@ -303,7 +304,15 @@ impl SettingsState {
         .spacing(10)
         .align_y(Alignment::Center);
 
+        let band_agg: Element<'a, SettingsMessage> = if self.advanced.transform == Transform::Stft {
+            pick_list(AGGREGATIONS, Some(self.advanced.band_aggregation), SettingsMessage::SetBandAggregation).into()
+        } else {
+            text("CQT uses constant-Q triangular bands.").size(11).into()
+        };
+
         let controls = column![
+            text("Right-click or press M to toggle this menu.").size(11),
+            if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
             label_row("Profile", "A profile combines colors, overlay, audio source, and DSP settings."),
             row![
                 pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
@@ -346,7 +355,7 @@ impl SettingsState {
             label_row("Transform", "STFT: equal time/frequency resolution. CQT: musical pitch spacing."),
             pick_list(TRANSFORMS, Some(self.advanced.transform), SettingsMessage::SetTransform),
             label_row("Band aggregation", "How FFT bins are combined into each log-frequency band."),
-            pick_list(AGGREGATIONS, Some(self.advanced.band_aggregation), SettingsMessage::SetBandAggregation),
+            band_agg,
             label_row("Weighting", "A/C frequency-weighting curves (IEC 61672) or no weighting."),
             pick_list(WEIGHTINGS, Some(self.advanced.weighting), SettingsMessage::SetWeighting),
             row![
@@ -359,7 +368,11 @@ impl SettingsState {
             .align_y(Alignment::Center),
             self.slider_row(DspSlider::WindowSize),
             self.slider_row(DspSlider::HopSize),
-            self.slider_row(DspSlider::LogBins),
+            if self.advanced.transform == Transform::Stft {
+                self.slider_row(DspSlider::LogBins)
+            } else {
+                text("").into()
+            },
             self.slider_row(DspSlider::FMin),
             self.slider_row(DspSlider::FMax),
             self.slider_row(DspSlider::DbFloor),
@@ -368,8 +381,16 @@ impl SettingsState {
             self.slider_row(DspSlider::Gamma),
             self.slider_row(DspSlider::TemporalAlpha),
             self.slider_row(DspSlider::PeakDecay),
-            self.slider_row(DspSlider::FreqScaleExp),
-            self.slider_row(DspSlider::CqtBins),
+            if self.advanced.transform == Transform::Stft {
+                self.slider_row(DspSlider::FreqScaleExp)
+            } else {
+                text("").into()
+            },
+            if self.advanced.transform == Transform::Cqt {
+                self.slider_row(DspSlider::CqtBins)
+            } else {
+                text("").into()
+            },
             self.slider_row(DspSlider::History),
         ]
         .spacing(8)
@@ -391,7 +412,7 @@ impl SettingsState {
             .into()
     }
 
-    fn manager_view<'a>(&'a self, manager: &LibraryManager) -> Element<'a, SettingsMessage> {
+    fn manager_view<'a>(&'a self, manager: &LibraryManager, paused: bool) -> Element<'a, SettingsMessage> {
         let (title, current, save, delete) = match manager {
             LibraryManager::Profiles => ("Manage profiles", &self.profile, SettingsMessage::SaveProfile, SettingsMessage::DeleteProfile),
             LibraryManager::Colormaps => ("Manage colormaps", &self.colormap, SettingsMessage::SaveColormap, SettingsMessage::DeleteColormap),
@@ -401,6 +422,8 @@ impl SettingsState {
             row![text(title).size(20), Space::new().width(Length::Fill), button("Back").on_press(SettingsMessage::CloseManager)]
                 .align_y(Alignment::Center),
             text(format!("Selected: {current}")).size(12),
+            text("Right-click or press M to toggle this menu.").size(11),
+            if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
             text("Built-ins are protected. Enter a new name to save a copy.").size(12),
             text_input("new name (optional)", &self.library_name).on_input(SettingsMessage::SetLibraryName),
         ];

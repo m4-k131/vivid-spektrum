@@ -2,7 +2,7 @@ use crate::Args;
 use spektrum::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 use spektrum::settings::{DspSlider, SettingsMessage, SettingsState};
 use spektrum::spectrogram::SpectrogramProgram;
-use spektrum_core::{overlay, profiles, resolve_colormap, SampleRing, SpectrumConfig, SpectrumProcessor};
+use spektrum_core::{overlay, profiles, resolve_colormap, spectrum_output_bins, SampleRing, SpectrumConfig, SpectrumProcessor};
 use iced::keyboard;
 use iced::mouse;
 use iced::widget::{container, stack};
@@ -107,7 +107,10 @@ impl App {
         let colormap_name = args.colormap.as_deref().unwrap_or(&profile.colors.colormap);
         let contrast = args.contrast.unwrap_or(profile.colors.contrast);
         let saturation = args.saturation.unwrap_or(profile.colors.saturation);
-        let colormap = resolve_colormap(colormap_name).expect("invalid colormap");
+        let colormap = resolve_colormap(colormap_name).unwrap_or_else(|error| {
+            eprintln!("{error}; using default colormap");
+            spektrum_core::default_colormap()
+        });
         let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
         let img = profile.image.as_ref();
         let rtl = if args.legacy_vertical_scroll { false } else { img.map_or(true, |i| i.scroll_right_to_left) };
@@ -166,7 +169,7 @@ impl App {
         Self {
             prog: SpectrogramProgram {
                 pending_spectra,
-                bins: spectrum.log_bins as u32,
+                bins: spectrum_output_bins(&spectrum) as u32,
                 min_history: history,
                 paused: false,
                 dev: SpectrogramDevConfig {
@@ -182,7 +185,7 @@ impl App {
                 overlay_thickness,
             },
             settings: SettingsState::new(
-                false, contrast, saturation, colormap_name, profile_name, "default",
+                true, contrast, saturation, colormap_name, profile_name, "default",
                 args.overlay.clone().unwrap_or_else(|| profile.colors.overlay.clone()),
                 source, &spectrum, history as f32,
             ),
@@ -203,7 +206,7 @@ impl App {
 
 fn list_dsp_settings_names() -> Vec<String> {
     let mut names = profiles::list_dsp_settings_names();
-    names.insert(0, "custom".to_string());
+    names.push("custom".to_string());
     names
 }
 
@@ -243,7 +246,7 @@ fn apply_overlay(app: &mut App, name: &str) {
 
 fn restart_dsp(app: &mut App) {
     app.restart_tx.send(DspCommand::Restart(app.spectrum.clone(), app.prog.min_history)).ok();
-    app.prog.bins = app.spectrum.log_bins as u32;
+    app.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
     let overlay = app.settings.overlay.clone();
     apply_overlay(app, &overlay);
 }
@@ -282,7 +285,7 @@ fn apply_profile(app: &mut App, name: &str) {
     if let Some(sample_rate) = app.args.sample_rate { spectrum.sample_rate = sample_rate; }
     app.spectrum = spectrum;
     app.prog.min_history = profile.history.unwrap_or(app.prog.min_history).max(1);
-    app.prog.bins = app.spectrum.log_bins as u32;
+    app.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
     app.prog.contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
     app.prog.saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
     let colormap_name = app.args.colormap.clone().unwrap_or(profile.colors.colormap);
@@ -524,7 +527,7 @@ fn view(app: &App) -> Element<'_, Message> {
         .width(Length::Fill)
         .height(Length::Fill);
     if !app.settings.open { return spectrogram.into(); }
-    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.dsp_settings, &app.overlays, &app.sources)
+    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.dsp_settings, &app.overlays, &app.sources, app.prog.paused)
         .map(Message::Settings);
     let panel: Element<'_, Message> = container(menu)
         .width(Length::Fill)
@@ -550,12 +553,24 @@ pub fn run(args: Args) -> anyhow::Result<()> {
         args.width.unwrap_or(image.map_or(800, |config| config.width)) as f32,
         args.height.unwrap_or(image.map_or(800, |config| config.height)) as f32,
     );
+    let icon = load_window_icon();
     iced::application(move || App::bootstrap(args.clone()), update, view)
         .title("vividspektrum")
+        .window(iced::window::Settings {
+            icon,
+            ..Default::default()
+        })
         .window_size(size)
         .centered()
         .subscription(subscription)
         .theme(iced::Theme::Dark)
         .run()
         .map_err(|e| anyhow::anyhow!("{e:?}"))
+}
+
+fn load_window_icon() -> Option<iced::window::Icon> {
+    let png = include_bytes!("../../favicon-256.png");
+    let img = image::load_from_memory(png).ok()?.to_rgba8();
+    let (w, h) = img.dimensions();
+    iced::window::icon::from_rgba(img.into_raw(), w, h).ok()
 }

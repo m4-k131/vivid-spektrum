@@ -76,19 +76,6 @@ pub fn load_profile(path: &Path) -> Result<Profile, CoreError> {
 
 pub fn builtin_profile(name: &str) -> Option<Profile> {
     match name {
-        "laptop" => Some(Profile {
-            dsp: SpectrumConfig {
-                window_size: 4096,
-                hop_size: 512,
-                sample_rate: 48000,
-                log_bins: 128,
-                ..Default::default()
-            },
-            colors: ColorSettings::default(),
-            audio: AudioSettings::default(),
-            image: None,
-            history: None,
-        }),
         "default" => Some(Profile {
             dsp: builtin_dsp_settings("default").unwrap(),
             colors: ColorSettings::default(),
@@ -96,22 +83,20 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
             image: None,
             history: None,
         }),
-        "high-resolution" => Some(Profile {
-            dsp: SpectrumConfig {
-                window_size: 32768,
-                hop_size: 128,
-                sample_rate: 48000,
-                log_bins: 2048,
-                db_floor: -100.0,
-                freq_smoothing_sigma: 1.5,
-                amplitude_gamma: 0.4,
-                temporal_alpha: 0.4,
-                peak_hold_decay: 0.95,
-                ..Default::default()
+        "personal" => Some(Profile {
+            dsp: personal_dsp_settings(),
+            colors: ColorSettings {
+                colormap: "nebula".to_string(),
+                contrast: 1.2,
+                saturation: 1.1,
+                overlay: "none".to_string(),
             },
-            colors: ColorSettings::default(),
             audio: AudioSettings::default(),
-            image: None,
+            image: Some(ProfileImage {
+                width: 800,
+                height: 1440,
+                scroll_right_to_left: true,
+            }),
             history: None,
         }),
         _ => None,
@@ -119,7 +104,7 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
 }
 
 pub fn builtin_profile_names() -> &'static [&'static str] {
-    &["laptop", "default", "high-resolution"]
+    &["default", "personal"]
 }
 
 pub fn user_profiles_dir() -> std::path::PathBuf {
@@ -127,7 +112,7 @@ pub fn user_profiles_dir() -> std::path::PathBuf {
 }
 
 pub fn is_builtin_profile(name: &str) -> bool {
-    builtin_profile(name).is_some() || std::path::Path::new("presets").join(format!("{name}.toml")).exists()
+    builtin_profile(name).is_some()
 }
 
 pub fn save_user_profile(name: &str, profile: &Profile) -> Result<(), CoreError> {
@@ -158,13 +143,12 @@ pub fn resolve_profile(name: &str) -> Result<Profile, CoreError> {
     if user_path.exists() {
         return load_profile(&user_path);
     }
-    let path = std::path::PathBuf::from(format!("presets/{name}.toml"));
-    if path.exists() { load_profile(&path) } else { Err(CoreError::Dsp(format!("unknown profile '{name}'"))) }
+    Err(CoreError::Dsp(format!("unknown profile '{name}'")))
 }
 
 pub fn list_profile_names() -> Vec<String> {
     let mut names: Vec<String> = builtin_profile_names().iter().map(|s| s.to_string()).collect();
-    for dir in [std::path::PathBuf::from("presets"), user_profiles_dir()] {
+    for dir in [user_profiles_dir()] {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for e in entries.flatten() {
                 let p = e.path();
@@ -205,9 +189,9 @@ fn personal_dsp_settings() -> SpectrumConfig {
 pub fn builtin_dsp_settings(name: &str) -> Option<SpectrumConfig> {
     let mut settings = personal_dsp_settings();
     match name {
-        "high-resolution" => {}
-        "default" | "medium-resolution" => settings.window_size = 4096,
-        "low-resolution" => settings.window_size = 2048,
+        "_high-resolution" => {}
+        "default" | "_medium-resolution" => settings.window_size = 4096,
+        "_low-resolution" => settings.window_size = 2048,
         "fast-scrolling" => {
             settings.window_size = 4096;
             settings.hop_size = 512;
@@ -244,10 +228,10 @@ pub fn builtin_dsp_settings(name: &str) -> Option<SpectrumConfig> {
 
 pub fn builtin_dsp_settings_names() -> &'static [&'static str] {
     &[
+        "_high-resolution",
+        "_medium-resolution",
+        "_low-resolution",
         "default",
-        "high-resolution",
-        "medium-resolution",
-        "low-resolution",
         "fast-scrolling",
         "wide-db-band",
         "narrow-frequency-band",
@@ -363,8 +347,8 @@ mod tests {
 
     #[test]
     fn dsp_settings_variants_inherit_personal_baseline() {
-        let personal = builtin_dsp_settings("high-resolution").unwrap();
-        let medium = builtin_dsp_settings("medium-resolution").unwrap();
+        let personal = builtin_dsp_settings("_high-resolution").unwrap();
+        let medium = builtin_dsp_settings("_medium-resolution").unwrap();
         let default = builtin_dsp_settings("default").unwrap();
         let fast = builtin_dsp_settings("fast-scrolling").unwrap();
         let wide = builtin_dsp_settings("wide-db-band").unwrap();
@@ -399,17 +383,10 @@ mod tests {
     }
 
     #[test]
-    fn laptop_profile_has_smaller_window() {
-        let p = builtin_profile("laptop").unwrap();
-        assert_eq!(p.dsp.window_size, 4096);
-        assert_eq!(p.dsp.log_bins, 128);
-    }
-
-    #[test]
-    fn high_resolution_profile_has_large_window() {
-        let p = builtin_profile("high-resolution").unwrap();
-        assert_eq!(p.dsp.window_size, 32768);
-        assert_eq!(p.dsp.log_bins, 2048);
+    fn only_default_and_personal_profiles_are_builtin() {
+        assert_eq!(builtin_profile_names(), &["default", "personal"]);
+        assert!(builtin_profile("default").is_some());
+        assert!(builtin_profile("personal").is_some());
     }
 
     #[test]
