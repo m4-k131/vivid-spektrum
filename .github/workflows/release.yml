@@ -34,9 +34,7 @@ jobs:
           mkdir -p vividspektrum-linux
           cp target/release/vividspektrum vividspektrum-linux/
           cp target/release/kde_overlay vividspektrum-linux/
-          cp target/release/audio_to_png vividspektrum-linux/
-          cp target/release/sine_preview vividspektrum-linux/
-          cp -r presets colormaps overlays vividspektrum-linux/
+          cp -r colormaps overlays vividspektrum-linux/ || true
           tar czf vividspektrum-linux-x86_64.tar.gz vividspektrum-linux
 
       - name: Upload artifact
@@ -54,15 +52,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build release binaries
-        run: cargo build --release --bin vividspektrum --bin audio_to_png
+        run: cargo build --release --bin vividspektrum
 
       - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path vividspektrum-windows
           Copy-Item target\release\vividspektrum.exe vividspektrum-windows\vividspektrum.exe
-          Copy-Item target\release\audio_to_png.exe vividspektrum-windows\audio_to_png.exe
-          Copy-Item -Recurse -Path presets,colormaps,overlays -Destination vividspektrum-windows
+          Copy-Item -Recurse -Path colormaps,overlays -Destination vividspektrum-windows -ErrorAction SilentlyContinue
           Compress-Archive -Path vividspektrum-windows -DestinationPath vividspektrum-windows-x86_64.zip
 
       - name: Upload artifact
