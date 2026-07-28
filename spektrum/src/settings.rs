@@ -163,6 +163,7 @@ pub enum SettingsMessage {
     SetProfile(String),
     SetDspSettings(String),
     SetOverlay(String),
+    OverlayShift(i32),
     SetSource(String),
     OpenManager(LibraryManager),
     CloseManager,
@@ -193,6 +194,7 @@ pub struct SettingsState {
     pub profile: String,
     pub dsp_settings: String,
     pub overlay: String,
+    pub semitone_shift: i32,
     pub source: String,
     pub width: f32,
     pub advanced: SpectrumConfig,
@@ -223,6 +225,7 @@ impl SettingsState {
             profile: profile.into(),
             dsp_settings: dsp_settings.into(),
             overlay: overlay.into(),
+            semitone_shift: 0,
             source: source.into(),
             width: 280.0,
             advanced: spectrum.clone(),
@@ -310,6 +313,12 @@ impl SettingsState {
             text("CQT uses constant-Q triangular bands.").size(11).into()
         };
 
+        let shift_text: Element<'a, SettingsMessage> = if self.semitone_shift != 0 {
+            text(format!("{}{} semitones", if self.semitone_shift > 0 { "+" } else { "" }, self.semitone_shift)).size(11).into()
+        } else {
+            text("").into()
+        };
+
         let controls = column![
             text("Right-click or press M to toggle this menu.").size(11),
             if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
@@ -338,8 +347,13 @@ impl SettingsState {
             ]
             .align_y(Alignment::Center),
             slider(0.0f32..=3.0f32, self.saturation, SettingsMessage::SetSaturation).step(0.05),
-            label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning)."),
-            pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay),
+            label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning). + and - shift all lines by one semitone."),
+            row![
+                pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay).width(Length::Fill),
+                button("+").on_press(SettingsMessage::OverlayShift(1)),
+                button("-").on_press(SettingsMessage::OverlayShift(-1)),
+            ].spacing(6),
+            shift_text,
             label_row("Audio source", "PipeWire/PulseAudio capture source saved separately from DSP settings."),
             pick_list(sources, Some(self.source.clone()), SettingsMessage::SetSource)
                 .text_size(11)

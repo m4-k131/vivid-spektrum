@@ -185,7 +185,7 @@ impl App {
 
         let overlay_name = args.overlay.as_deref().unwrap_or(&profile.colors.overlay);
         let (overlay_lines, overlay_color, overlay_opacity, overlay_thickness) =
-            compute_overlay(overlay_name, &spectrum);
+            compute_overlay(overlay_name, &spectrum, 0);
 
         let profile_name = args.config.as_ref()
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
@@ -328,7 +328,7 @@ fn apply_spectrum_overrides(args: &Args, spectrum: &mut SpectrumConfig) {
     if args.centered { spectrum.centered = true; }
 }
 
-fn compute_overlay(name_or_path: &str, spectrum: &SpectrumConfig) -> (Vec<f32>, [f32; 3], f32, f32) {
+fn compute_overlay(name_or_path: &str, spectrum: &SpectrumConfig, semitone_shift: i32) -> (Vec<f32>, [f32; 3], f32, f32) {
     if name_or_path.is_empty() || name_or_path == "none" {
         return (Vec::new(), [0.9, 0.9, 0.9], 0.0, 0.003);
     }
@@ -336,14 +336,16 @@ fn compute_overlay(name_or_path: &str, spectrum: &SpectrumConfig) -> (Vec<f32>, 
         Some(c) => c,
         None => return (Vec::new(), [0.9, 0.9, 0.9], 0.0, 0.003),
     };
+    let shift_ratio = 2.0f32.powf(semitone_shift as f32 / 12.0);
     let f_min = spectrum.f_min_hz;
     let f_max = spectrum.f_max_hz;
     let exp = spectrum.freq_scale_exp.max(0.1);
     let log_range = (f_max / f_min).ln();
     let lines: Vec<f32> = cfg.lines.iter()
-        .filter(|l| l.freq >= f_min && l.freq <= f_max)
-        .map(|l| {
-            let t = (l.freq / f_min).ln() / log_range;
+        .map(|l| l.freq * shift_ratio)
+        .filter(|freq| *freq >= f_min && *freq <= f_max)
+        .map(|freq| {
+            let t = (freq / f_min).ln() / log_range;
             let bin_pos = t.powf(1.0 / exp);
             1.0 - bin_pos
         })
@@ -415,12 +417,13 @@ fn apply_capture_source(app: &mut App, target: &str) {
 
 fn apply_overlay(app: &mut App, name: &str) {
     app.settings.overlay = name.to_string();
+    app.settings.semitone_shift = 0;
     if name == "none" {
         app.prog.overlay_lines.clear();
         app.prog.overlay_opacity = 0.0;
         return;
     }
-    let (lines, color, opacity, thickness) = compute_overlay(name, &app.spectrum);
+    let (lines, color, opacity, thickness) = compute_overlay(name, &app.spectrum, app.settings.semitone_shift);
     app.prog.overlay_lines = lines;
     app.prog.overlay_color = color;
     app.prog.overlay_opacity = opacity;
@@ -506,7 +509,7 @@ fn apply_advanced(app: &mut App, field: DspSlider) {
     }
 
     if app.settings.overlay != "none" {
-        let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum);
+        let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum, app.settings.semitone_shift);
         app.prog.overlay_lines = lines;
         app.prog.overlay_color = color;
         app.prog.overlay_opacity = opacity;
@@ -600,6 +603,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
                 SettingsMessage::SetDspSettings(name) => apply_dsp_settings(app, &name),
                 SettingsMessage::SetOverlay(name) => apply_overlay(app, &name),
+                SettingsMessage::OverlayShift(delta) => {
+                    app.settings.semitone_shift += delta;
+                    if app.settings.overlay != "none" {
+                        let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum, app.settings.semitone_shift);
+                        app.prog.overlay_lines = lines;
+                        app.prog.overlay_color = color;
+                        app.prog.overlay_opacity = opacity;
+                        app.prog.overlay_thickness = thickness;
+                    }
+                }
                 SettingsMessage::OpenManager(manager) => {
                     app.settings.library_name.clear();
                     if matches!(manager, spektrum::settings::LibraryManager::Colormaps) {
