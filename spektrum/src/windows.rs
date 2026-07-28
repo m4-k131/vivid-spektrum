@@ -655,14 +655,17 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     }
                     app.settings.manager = Some(manager);
                 }
-                SettingsMessage::CloseManager => app.settings.manager = None,
-                SettingsMessage::SetLibraryName(name) => app.settings.library_name = name,
+                SettingsMessage::CloseManager => { app.settings.manager = None; app.settings.error_msg = None; }
+                SettingsMessage::SetLibraryName(name) => { app.settings.library_name = name; app.settings.error_msg = None; }
                 SettingsMessage::SaveProfile => {
                     let name = if app.settings.library_name.trim().is_empty() { app.settings.profile.clone() } else { app.settings.library_name.trim().to_string() };
-                    if profiles::save_user_profile(&name, &current_profile(app)).is_ok() {
-                        app.settings.profile = name;
-                        app.settings.library_name.clear();
-                        refresh_libraries(app);
+                    match profiles::save_user_profile(&name, &current_profile(app)) {
+                        Ok(()) => {
+                            app.settings.profile = name;
+                            app.settings.library_name.clear();
+                            refresh_libraries(app);
+                        }
+                        Err(e) => app.settings.error_msg = Some(format!("{e}")),
                     }
                 }
                 SettingsMessage::DeleteProfile => {
@@ -673,10 +676,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 SettingsMessage::SaveDspSettings => {
                     let name = if app.settings.library_name.trim().is_empty() { app.settings.dsp_settings.clone() } else { app.settings.library_name.trim().to_string() };
-                    if profiles::save_user_dsp_settings(&name, &app.spectrum).is_ok() {
-                        app.settings.dsp_settings = name;
-                        app.settings.library_name.clear();
-                        refresh_libraries(app);
+                    match profiles::save_user_dsp_settings(&name, &app.spectrum) {
+                        Ok(()) => {
+                            app.settings.dsp_settings = name;
+                            app.settings.library_name.clear();
+                            refresh_libraries(app);
+                        }
+                        Err(e) => app.settings.error_msg = Some(format!("{e}")),
                     }
                 }
                 SettingsMessage::DeleteDspSettings => {
@@ -694,10 +700,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     } else {
                         return Task::none();
                     };
-                    if spektrum_core::colormap::save_user_colormap(&name, &colormap).is_ok() {
-                        apply_colormap(app, &name);
-                        app.settings.library_name.clear();
-                        refresh_libraries(app);
+                    match spektrum_core::colormap::save_user_colormap(&name, &colormap) {
+                        Ok(()) => {
+                            apply_colormap(app, &name);
+                            app.settings.library_name.clear();
+                            refresh_libraries(app);
+                        }
+                        Err(e) => app.settings.error_msg = Some(format!("{e}")),
                     }
                 }
                 SettingsMessage::DeleteColormap => {

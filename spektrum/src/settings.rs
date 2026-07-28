@@ -211,6 +211,7 @@ pub struct SettingsState {
     pub library_name: String,
     pub colormap_stops: Vec<(f32, f32, f32, f32)>,
     pub shared_bg: bool,
+    pub error_msg: Option<String>,
 }
 
 impl SettingsState {
@@ -246,6 +247,7 @@ impl SettingsState {
             library_name: String::new(),
             colormap_stops: Vec::new(),
             shared_bg: true,
+            error_msg: None,
         }
     }
 
@@ -471,8 +473,12 @@ impl SettingsState {
             text("Right-click or press M to toggle this menu.").size(11),
             if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
             text("Built-ins are protected. Enter a new name to save a copy.").size(12),
+            text("Names: letters, numbers, '-' and '_' only. No spaces.").size(11),
             text_input("new name (optional)", &self.library_name).on_input(SettingsMessage::SetLibraryName),
         ];
+        if let Some(ref err) = self.error_msg {
+            body = body.push(text(err).size(12).style(|_theme: &Theme| text::Style { color: Some(iced::Color::from_rgb(0.9, 0.3, 0.3)) }));
+        }
         let protected = match manager {
             LibraryManager::Profiles => spektrum_core::profiles::is_builtin_profile(current),
             LibraryManager::Colormaps => spektrum_core::colormap::is_builtin_colormap(current),

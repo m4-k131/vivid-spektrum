@@ -767,8 +767,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     }
                     app.settings.manager = Some(manager);
                 }
-                SettingsMessage::CloseManager => app.settings.manager = None,
-                SettingsMessage::SetLibraryName(name) => app.settings.library_name = name,
+                SettingsMessage::CloseManager => { app.settings.manager = None; app.settings.error_msg = None; }
+                SettingsMessage::SetLibraryName(name) => { app.settings.library_name = name; app.settings.error_msg = None; }
                 SettingsMessage::SaveProfile => {
                     let name = if app.settings.library_name.trim().is_empty() {
                         app.settings.profile.clone()
@@ -776,7 +776,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         app.settings.library_name.trim().to_string()
                     };
                     if let Err(e) = profiles::save_user_profile(&name, &current_profile(app)) {
-                        eprintln!("failed to save profile: {e}");
+                        app.settings.error_msg = Some(format!("{e}"));
                     } else {
                         app.settings.profile = name;
                         app.settings.library_name.clear();
@@ -800,7 +800,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         app.settings.library_name.trim().to_string()
                     };
                     if let Err(e) = profiles::save_user_dsp_settings(&name, &app.spectrum) {
-                        eprintln!("failed to save DSP settings: {e}");
+                        app.settings.error_msg = Some(format!("{e}"));
                     } else {
                         app.settings.dsp_settings = name;
                         app.settings.library_name.clear();
@@ -840,7 +840,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                                 app.settings.library_name.clear();
                                 refresh_libraries(app);
                             }
-                            Err(e) => eprintln!("failed to save colormap: {e}"),
+                            Err(e) => app.settings.error_msg = Some(format!("{e}")),
                     }
                 }
                 SettingsMessage::SetColorStop(index, component, value) => {
