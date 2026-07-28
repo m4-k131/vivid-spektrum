@@ -1,5 +1,5 @@
 //! Shared settings overlay panel used by the live spectrogram window (Linux & Windows).
-use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, slider, text, text_input, Space, Tooltip};
+use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, slider, text, text_input, toggler, Space, Tooltip};
 use iced::widget::tooltip::Position;
 use iced::{Alignment, Element, Length, Theme};
 use spektrum_core::{BandAggregation, SpectrumConfig, Transform, Weighting, WindowFunction};
@@ -159,12 +159,16 @@ pub enum SettingsMessage {
     Close,
     SetContrast(f32),
     SetSaturation(f32),
+    SetOpacity(f32),
     SetColormap(String),
     SetProfile(String),
     SetDspSettings(String),
     SetOverlay(String),
     OverlayShift(i32),
     SetSource(String),
+    AddSource,
+    RemoveSource(usize),
+    SelectSource(usize),
     OpenManager(LibraryManager),
     CloseManager,
     SetLibraryName(String),
@@ -184,24 +188,30 @@ pub enum SettingsMessage {
     SetWeighting(Weighting),
     SetTransform(Transform),
     SetCentered(bool),
+    SetSharedBg(bool),
 }
 
 pub struct SettingsState {
     pub open: bool,
     pub contrast: f32,
     pub saturation: f32,
+    pub opacity: f32,
     pub colormap: String,
     pub profile: String,
     pub dsp_settings: String,
     pub overlay: String,
     pub semitone_shift: i32,
     pub source: String,
+    pub active_source: usize,
+    pub source_labels: Vec<String>,
     pub width: f32,
     pub advanced: SpectrumConfig,
     pub history: f32,
     pub manager: Option<LibraryManager>,
     pub library_name: String,
     pub colormap_stops: Vec<(f32, f32, f32, f32)>,
+    pub shared_bg: bool,
+    pub error_msg: Option<String>,
 }
 
 impl SettingsState {
@@ -221,18 +231,23 @@ impl SettingsState {
             open,
             contrast,
             saturation,
+            opacity: 1.0,
             colormap: colormap.into(),
             profile: profile.into(),
             dsp_settings: dsp_settings.into(),
             overlay: overlay.into(),
             semitone_shift: 0,
             source: source.into(),
+            active_source: 0,
+            source_labels: vec!["Source 1".to_string()],
             width: 280.0,
             advanced: spectrum.clone(),
             history,
             manager: None,
             library_name: String::new(),
             colormap_stops: Vec::new(),
+            shared_bg: true,
+            error_msg: None,
         }
     }
 
@@ -322,12 +337,15 @@ impl SettingsState {
         let controls = column![
             text("Right-click or press M to toggle this menu.").size(11),
             if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
-            label_row("Profile", "A profile combines colors, overlay, audio source, and DSP settings."),
+            label_row("Profile", "A profile combines sources, colors, overlay, and DSP settings."),
             row![
                 pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
                 button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
             ].spacing(6),
-            text("Colors · overlay · audio source · DSP").size(11),
+            text("Sources · colors · overlay · DSP").size(11),
+            iced::widget::rule::horizontal(1),
+            text("Sources").size(14),
+            self.source_list_view(),
             label_row("Colormap", "Color map used to map magnitude to color."),
             row![
                 pick_list(colormaps, Some(self.colormap.clone()), SettingsMessage::SetColormap).width(Length::Fill),
@@ -347,6 +365,26 @@ impl SettingsState {
             ]
             .align_y(Alignment::Center),
             slider(0.0f32..=3.0f32, self.saturation, SettingsMessage::SetSaturation).step(0.05),
+            row![
+                text(format!("Opacity {:.2}", self.opacity)).size(12),
+                Space::new().width(Length::Fill),
+                info_icon("Layer opacity for alpha blending. 1.0 = fully opaque, 0.0 = invisible."),
+            ]
+            .align_y(Alignment::Center),
+            slider(0.0f32..=1.0f32, self.opacity, SettingsMessage::SetOpacity).step(0.05),
+            label_row("Audio source", "PipeWire/PulseAudio capture source for this source slot."),
+            pick_list(sources, Some(self.source.clone()), SettingsMessage::SetSource)
+                .text_size(11)
+                .width(Length::Fill),
+            iced::widget::rule::horizontal(1),
+            text("Global").size(14),
+            row![
+                text("Shared background").size(12),
+                Space::new().width(Length::Fill),
+                info_icon("Use the darkest colormap color as a shared background. Prevents over-darkening when stacking multiple sources."),
+            ]
+            .align_y(Alignment::Center),
+            toggler(self.shared_bg).on_toggle(SettingsMessage::SetSharedBg),
             label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning). + and - shift all lines by one semitone."),
             row![
                 pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay).width(Length::Fill),
@@ -354,10 +392,6 @@ impl SettingsState {
                 button("-").on_press(SettingsMessage::OverlayShift(-1)),
             ].spacing(6),
             shift_text,
-            label_row("Audio source", "PipeWire/PulseAudio capture source saved separately from DSP settings."),
-            pick_list(sources, Some(self.source.clone()), SettingsMessage::SetSource)
-                .text_size(11)
-                .width(Length::Fill),
             text("DSP").size(14),
             label_row("DSP settings", "Reusable DSP slider presets. Applying one does not change profile colors, overlay, or audio source."),
             row![
@@ -439,8 +473,12 @@ impl SettingsState {
             text("Right-click or press M to toggle this menu.").size(11),
             if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
             text("Built-ins are protected. Enter a new name to save a copy.").size(12),
+            text("Names: letters, numbers, '-' and '_' only. No spaces.").size(11),
             text_input("new name (optional)", &self.library_name).on_input(SettingsMessage::SetLibraryName),
         ];
+        if let Some(ref err) = self.error_msg {
+            body = body.push(text(err).size(12).style(|_theme: &Theme| text::Style { color: Some(iced::Color::from_rgb(0.9, 0.3, 0.3)) }));
+        }
         let protected = match manager {
             LibraryManager::Profiles => spektrum_core::profiles::is_builtin_profile(current),
             LibraryManager::Colormaps => spektrum_core::colormap::is_builtin_colormap(current),
@@ -492,6 +530,38 @@ impl SettingsState {
                 ..Default::default()
             })
             .into()
+    }
+
+    fn source_list_view<'a>(&'a self) -> Element<'a, SettingsMessage> {
+        let mut list = column![].spacing(4);
+        for (i, label) in self.source_labels.iter().enumerate() {
+            let is_active = i == self.active_source;
+            let label_text: Element<'a, SettingsMessage> = if is_active {
+                text(format!("▶ {label}")).size(12).into()
+            } else {
+                text(format!("  {label}")).size(12).into()
+            };
+            let select_btn = if is_active {
+                button(label_text)
+            } else {
+                button(label_text).on_press(SettingsMessage::SelectSource(i))
+            };
+            let remove_btn = if self.source_labels.len() > 1 {
+                button("✕").on_press(SettingsMessage::RemoveSource(i))
+            } else {
+                button("✕")
+            };
+            list = list.push(
+                row![select_btn, Space::new().width(Length::Fill), remove_btn]
+                    .spacing(6)
+                    .align_y(Alignment::Center),
+            );
+        }
+        list = list.push(
+            row![button("+ Add source").on_press(SettingsMessage::AddSource)]
+                .spacing(6),
+        );
+        list.into()
     }
 
     fn slider_row<'b>(&'b self, s: DspSlider) -> Element<'b, SettingsMessage> {

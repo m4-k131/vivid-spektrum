@@ -7,7 +7,7 @@ The pipeline is split into a DSP core (`spektrum-core`) and the application (`sp
 ## What it does
 
 - **Offline**: decode an audio file (WAV/MP3/FLAC/AAC/Ogg Vorbis) and render a PNG spectrogram.
-- **Live**: capture system audio through PipeWire (Linux) or CPAL (Windows), compute STFT/CQT columns in a background thread, and stream them to a WGPU fragment shader that performs colormap lookup, contrast and saturation in real time.
+- **Live**: capture system audio through PipeWire (Linux) or CPAL (Windows), compute STFT/CQT columns in a background thread, and stream them to a WGPU fragment shader that performs colormap lookup, contrast and saturation in real time. Supports **multiple simultaneous audio sources** with per-source colormaps, contrast, and opacity, rendered as overlapping layers with synchronized scrolling.
 - **Widget**: run as a layer-shell overlay on wlroots/KDE Plasma, anchored to any screen edge.
 
 Data flow (live):
@@ -32,7 +32,7 @@ Optional: `--auto-width` makes the PNG width exactly one pixel per STFT hop. Use
 
 ```bash
 cargo run --release --bin vividspektrum
-cargo run --release --bin vividspektrum -- --profile high-resolution --colormap inferno
+cargo run --release --bin vividspektrum -- --profile high_quality --colormap inferno
 ```
 
 Right-click (or press `M`/`Esc`) to toggle the settings overlay. Double-click the spectrogram to toggle fullscreen.
@@ -47,28 +47,20 @@ cargo run --release --bin kde_overlay -- --anchor bottom --layer background --he
 
 ## Presets
 
-`presets/` contains 10 ready-to-use TOML profiles. Built-ins plus `.toml` files in `presets/` are resolved by `--profile <name>`:
+Built-in profiles are resolved by `--profile <name>`. You can also load custom `.toml` files with `--config`:
 
 ```bash
-cargo run --bin vividspektrum -- --profile high-resolution
-cargo run --bin vividspektrum -- --config presets/personal.toml
-cargo run --bin vividspektrum -- --list-presets
+cargo run --bin vividspektrum -- --profile high_quality
+cargo run --bin vividspektrum -- --config my_profile.toml
 ```
 
 | Preset | FFT | Bins | Use case |
 |--------|-----|------|----------|
-| `default` | 8192 | 1024 | Balanced quality/performance |
-| `laptop` | 4096 | 256 | Low CPU, battery-friendly |
-| `high-resolution` | 32768 | 2048 | Maximum resolution |
-| `music-production` | 16384 | 1536 | Mixing/mastering (centered, A-weighted) |
-| `voice` | 4096 | 512 | Speech/vocal range (80 Hz–8 kHz) |
-| `bass-heavy` | 16384 | 1024 | Sub-bass emphasis |
-| `cqt-musical` | 8192 | 512 | Constant-Q, 24 bins/octave |
-| `minimal-dark` | 8192 | 512 | Desktop widget aesthetic |
-| `ultra-responsive` | 2048 | 512 | Minimum latency |
-| `personal` | 8192 | 4096 | Tuned all-rounder (custom `presets/personal.toml`) |
+| `medium_quality` | 4096 | 4096 | Balanced quality/performance (nebula colormap) |
+| `high_quality` | 8192 | 4096 | High-resolution, loaded by default (nebula colormap) |
+| `singing_practice` | 8192 | 4096 | Multi-source: output monitor + input, dual colormaps, 6 kHz range |
 
-See `default_config.toml` for the full annotated config reference.
+See `example_profile.toml` for the full annotated config reference.
 
 ## Configuration and settings
 
@@ -209,7 +201,7 @@ Practical limits:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--profile` | `default` | Preset name (also resolves `presets/<name>.toml`) |
+| `--profile` | `high_quality` | Preset name (also resolves custom `.toml` files) |
 | `--config` | — | Path to a TOML profile file |
 | `--colormap` | viridis | Colormap name or `.toml` path |
 | `--fft` / `--window` | 8192 | FFT window size (samples) |
@@ -252,14 +244,14 @@ Practical limits:
 
 ```bash
 cargo run --release -p spektrum --bin audio_to_png -- input.mp3 out.png \
-  --profile high-resolution --from 00:30 --to 01:30 --auto-width
+  --profile high_quality --from 00:30 --to 01:30 --auto-width
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `input` | — | Audio file |
 | `output` | — | PNG file |
-| `--profile` / `--config` | default | Profile to use |
+| `--profile` / `--config` | high_quality | Profile to use |
 | `--fft`, `--hop`, `--log-bins`, `--window-fn`, `--band-agg`, `--smoothing`, `--gamma`, `--temporal-alpha`, `--peak-decay`, `--transform`, `--cqt-bpo`, `--weighting`, `--freq-scale-exp` | | Spectrum overrides (same semantics as live) |
 | `--width` | profile image | Output PNG width |
 | `--height` | profile image | Output PNG height |
@@ -274,7 +266,7 @@ cargo run --release -p spektrum --bin audio_to_png -- input.mp3 out.png \
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--profile` / `--config` | default | Profile |
+| `--profile` / `--config` | high_quality | Profile |
 | `--fft`, `--hop`, `--log-bins` | | Spectrum overrides |
 | `--width` | profile image | `0` = stretch to edge |
 | `--height` | 200 | Widget height |
@@ -323,4 +315,40 @@ See `BUILD.md` for Linux system dependencies (PipeWire, Wayland dev libs) and `W
 |-------|---------|
 | `spektrum-core` | DSP: STFT/CQT, colormaps, profiles, ring buffer, PipeWire capture. |
 | `spektrum` | Application binaries: `vividspektrum`, `audio_to_png`, `kde_overlay`, plus the Iced/WGPU shader and settings overlay. |
+
+## Changelog
+
+### v0.4.0
+
+- **Multi-source audio**: render up to 4 simultaneous audio sources as overlapping spectrogram layers with per-source colormaps, contrast, saturation, and opacity
+- **Synchronized scrolling**: all sources share a common scroll position, synced to whichever source produced the most recent update
+- **Profile renaming**: `default` → `medium_quality`, `personal` → `high_quality` (now default), `singing-practice` → `singing_practice` (now a built-in multi-source profile with dual colormaps, 6 kHz range, and high contrast)
+- **Audio source switching**: fixed PipeWire capture stream management — each stream gets a unique application name with a generation counter to prevent zombie stream conflicts; `pactl move-source-output` used for reliable source switching
+- **GPU texture reset**: spectrogram textures are cleared on profile/source changes to prevent stale data flickering
+- **Shared background blending**: multi-source layers can share a common background color with alpha compositing
+- **Profile/DSP settings management**: save, load, delete custom profiles and DSP presets from the GUI with validation feedback
+- **Custom colormaps**: create, edit, and delete colormaps from the GUI with live preview
+
+### v0.3.0
+
+- A/C frequency weighting (IEC 61672)
+- CQT (constant-Q transform) as alternative to STFT
+- Non-power-of-two FFT support
+- 7 built-in colormaps with gradient-stop LUT
+- Frequency-domain Gaussian smoothing
+- Amplitude gamma, temporal EMA, peak-hold decay
+- TOML profiles with CLI overrides
+
+### v0.2.0
+
+- Live GPU rendering on Linux/Wayland (Iced + WGPU)
+- PipeWire audio capture with lock-free ring buffer
+- Settings overlay with real-time controls
+- Layer-shell desktop widget (kde_overlay)
+
+### v0.1.0
+
+- Offline PNG spectrogram generation from audio files
+- STFT with log-frequency mapping
+- Parallel FFT processing with rayon
 

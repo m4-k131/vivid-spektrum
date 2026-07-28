@@ -4,4 +4,6 @@ pub mod dev;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod settings;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
+pub mod source;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub mod spectrogram;

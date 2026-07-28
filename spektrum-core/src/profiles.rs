@@ -10,6 +10,30 @@ pub struct Profile {
     pub image: Option<ProfileImage>,
     #[serde(default)]
     pub history: Option<u32>,
+    #[serde(default)]
+    pub sources: Vec<SourceConfig>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct SourceConfig {
+    pub source: Option<String>,
+    pub colormap: String,
+    pub contrast: f32,
+    pub saturation: f32,
+    pub opacity: f32,
+}
+
+impl Default for SourceConfig {
+    fn default() -> Self {
+        Self {
+            source: None,
+            colormap: "magma".into(),
+            contrast: 1.0,
+            saturation: 1.0,
+            opacity: 1.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -76,14 +100,20 @@ pub fn load_profile(path: &Path) -> Result<Profile, CoreError> {
 
 pub fn builtin_profile(name: &str) -> Option<Profile> {
     match name {
-        "default" => Some(Profile {
+        "medium_quality" => Some(Profile {
             dsp: builtin_dsp_settings("default").unwrap(),
-            colors: ColorSettings::default(),
+            colors: ColorSettings {
+                colormap: "nebula".to_string(),
+                contrast: 1.0,
+                saturation: 1.0,
+                overlay: "none".to_string(),
+            },
             audio: AudioSettings::default(),
             image: None,
             history: None,
+            sources: Vec::new(),
         }),
-        "personal" => Some(Profile {
+        "high_quality" => Some(Profile {
             dsp: personal_dsp_settings(),
             colors: ColorSettings {
                 colormap: "nebula".to_string(),
@@ -98,13 +128,50 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
                 scroll_right_to_left: true,
             }),
             history: None,
+            sources: Vec::new(),
+        }),
+        "singing_practice" => Some(Profile {
+            dsp: {
+                let mut s = personal_dsp_settings();
+                s.f_max_hz = 6000.0;
+                s
+            },
+            colors: ColorSettings {
+                colormap: "plasma".to_string(),
+                contrast: 2.35,
+                saturation: 1.05,
+                overlay: "none".to_string(),
+            },
+            audio: AudioSettings::default(),
+            image: Some(ProfileImage {
+                width: 800,
+                height: 800,
+                scroll_right_to_left: true,
+            }),
+            history: Some(512),
+            sources: vec![
+                SourceConfig {
+                    source: None,
+                    colormap: "aurora".into(),
+                    contrast: 2.05,
+                    saturation: 1.1,
+                    opacity: 1.0,
+                },
+                SourceConfig {
+                    source: None,
+                    colormap: "plasma".into(),
+                    contrast: 2.35,
+                    saturation: 1.05,
+                    opacity: 0.55,
+                },
+            ],
         }),
         _ => None,
     }
 }
 
 pub fn builtin_profile_names() -> &'static [&'static str] {
-    &["default", "personal"]
+    &["medium_quality", "high_quality", "singing_practice"]
 }
 
 pub fn user_profiles_dir() -> std::path::PathBuf {
@@ -383,15 +450,16 @@ mod tests {
     }
 
     #[test]
-    fn only_default_and_personal_profiles_are_builtin() {
-        assert_eq!(builtin_profile_names(), &["default", "personal"]);
-        assert!(builtin_profile("default").is_some());
-        assert!(builtin_profile("personal").is_some());
+    fn builtin_profiles_exist() {
+        assert_eq!(builtin_profile_names(), &["medium_quality", "high_quality", "singing_practice"]);
+        assert!(builtin_profile("medium_quality").is_some());
+        assert!(builtin_profile("high_quality").is_some());
+        assert!(builtin_profile("singing_practice").is_some());
     }
 
     #[test]
-    fn default_profile_uses_default_dsp_settings() {
-        let profile = builtin_profile("default").unwrap();
+    fn medium_quality_profile_uses_default_dsp_settings() {
+        let profile = builtin_profile("medium_quality").unwrap();
         let settings = builtin_dsp_settings("default").unwrap();
         assert_eq!(profile.dsp.window_size, settings.window_size);
         assert_eq!(profile.dsp.hop_size, settings.hop_size);
@@ -406,6 +474,7 @@ mod tests {
             audio: AudioSettings::default(),
             image: None,
             history: None,
+            sources: Vec::new(),
         };
         let cfg = profile.to_image_config();
         assert_eq!(cfg.width, 800);
@@ -429,6 +498,7 @@ mod tests {
                 scroll_right_to_left: false,
             }),
             history: None,
+            sources: Vec::new(),
         };
         let cfg = profile.to_image_config();
         assert_eq!(cfg.width, 1920);
