@@ -110,7 +110,7 @@ impl App {
         let dev = SpectrogramDevConfig { scroll_right_to_left: rtl };
         let debug_profile = args.debug_profile;
 
-        let (mut slot, capture_tx) = create_source_slot(
+        let (mut slot, _capture_tx) = create_source_slot(
             0,
             source.clone(),
             &spectrum,
@@ -242,7 +242,8 @@ fn create_source_slot(
         capture_name: String::new(),
     };
 
-    (slot, slot.capture_tx.clone().unwrap())
+    let tx = slot.capture_tx.clone().unwrap();
+    (slot, tx)
 }
 
 fn list_dsp_settings_names() -> Vec<String> {
