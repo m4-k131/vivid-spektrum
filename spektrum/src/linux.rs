@@ -375,22 +375,36 @@ fn apply_profile(app: &mut App, name: &str) {
     let debug_profile = app.sources.first().map_or(app.args.debug_profile, |s| s.prog.debug_profile);
 
     if !profile.sources.is_empty() {
-        while app.sources.len() > 1 {
+        while !app.sources.is_empty() {
             app.sources.pop();
             app._pw_handles.pop();
         }
-        let default_target = app.source_targets.values().next().cloned().unwrap_or_default();
+        let default_output = spektrum_core::pipewire::default_pulse_output_monitor()
+            .or_else(spektrum_core::pipewire::default_pulse_source)
+            .unwrap_or_default();
+        let default_input = spektrum_core::pipewire::default_pulse_source()
+            .unwrap_or_default();
         let n = profile.sources.len().min(MAX_SOURCES);
-        while app.sources.len() < n {
-            let id = app.sources.len();
+        for (i, sc) in profile.sources.iter().take(n).enumerate() {
+            let target = if app.args.target_object.is_empty() {
+                match sc.source.as_deref() {
+                    Some(s) => s.to_string(),
+                    None => {
+                        if i == 0 { default_output.clone() }
+                        else { default_input.clone() }
+                    }
+                }
+            } else {
+                app.args.target_object.get(i).cloned().unwrap_or_default()
+            };
             let (slot, pw) = create_source_slot(
-                id,
-                default_target.clone(),
+                i,
+                target,
                 &spectrum,
-                "magma",
-                1.0,
-                1.0,
-                0.5,
+                &sc.colormap,
+                sc.contrast,
+                sc.saturation,
+                sc.opacity,
                 history,
                 dev,
                 debug_profile,
@@ -398,25 +412,6 @@ fn apply_profile(app: &mut App, name: &str) {
             );
             app.sources.push(slot);
             app._pw_handles.push(pw);
-        }
-        for (i, sc) in profile.sources.iter().take(n).enumerate() {
-            let slot = &mut app.sources[i];
-            slot.restart_dsp(&spectrum, history);
-            slot.prog.bins = spectrum_output_bins(&spectrum) as u32;
-            slot.prog.min_history = history;
-            slot.prog.dev.scroll_right_to_left = rtl;
-            slot.prog.contrast = sc.contrast;
-            slot.prog.saturation = sc.saturation;
-            slot.prog.opacity = sc.opacity;
-            if let Ok(cm) = resolve_colormap(&sc.colormap) {
-                slot.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
-                slot.colormap_name = sc.colormap.clone();
-            }
-            if app.args.target_object.is_empty() {
-                if let Some(ref src) = sc.source {
-                    slot.set_target(src);
-                }
-            }
         }
         app.settings.active_source = 0;
         app.settings.source_labels = app.sources.iter().map(|s| s.label.clone()).collect();
