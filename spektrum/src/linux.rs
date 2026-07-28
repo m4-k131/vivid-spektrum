@@ -50,7 +50,7 @@ impl App {
 
         let rtl = if args.legacy_vertical_scroll { false } else { img.is_none_or(|i| i.scroll_right_to_left) };
         let history = effective_spectrogram_history(args.history);
-        let capture_target = args.target_object.clone()
+        let capture_target = args.target_object.first().cloned()
             .or_else(|| profile.audio.source.clone())
             .or_else(spektrum_core::pipewire::default_pulse_output_monitor)
             .or_else(spektrum_core::pipewire::default_pulse_source);
@@ -59,7 +59,6 @@ impl App {
         for (index, target) in spektrum_core::pipewire::pulse_sources().into_iter().enumerate() {
             let label = source_label(index, &target);
             source_targets.insert(label.clone(), target);
-            source_list.push(label);
         }
         let source_label_str = capture_target.as_deref()
             .and_then(|target| source_targets.iter().find_map(|(label, value)| (value == target).then(|| label.clone())))
@@ -111,6 +110,29 @@ impl App {
         slot.prog.overlay_opacity = overlay_opacity;
         slot.prog.overlay_thickness = overlay_thickness;
 
+        let mut sources = vec![slot];
+        let mut pw_handles = vec![pw_handle];
+
+        for (i, extra_target) in args.target_object.iter().skip(1).enumerate() {
+            let id = i + 1;
+            if id >= MAX_SOURCES { break; }
+            let (extra_slot, extra_pw) = create_source_slot(
+                id,
+                extra_target.clone(),
+                &spectrum,
+                "magma",
+                1.0,
+                1.0,
+                0.5,
+                history,
+                dev,
+                debug_profile,
+                &source_targets,
+            );
+            sources.push(extra_slot);
+            pw_handles.push(extra_pw);
+        }
+
         let profile_name = args.config.as_ref()
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
             .or(args.profile.clone())
@@ -133,10 +155,10 @@ impl App {
             &spectrum,
             history as f32,
         );
-        settings.source_labels = vec!["Source 1".to_string()];
+        settings.source_labels = sources.iter().map(|s| s.label.clone()).collect();
 
         Self {
-            sources: vec![slot],
+            sources,
             settings,
             args,
             spectrum,
@@ -148,7 +170,7 @@ impl App {
             overlays,
             source_list,
             source_targets,
-            _pw_handles: vec![pw_handle],
+            _pw_handles: pw_handles,
         }
     }
 }
@@ -389,7 +411,7 @@ fn apply_profile(app: &mut App, name: &str) {
                 slot.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
                 slot.colormap_name = sc.colormap.clone();
             }
-            if app.args.target_object.is_none() {
+            if app.args.target_object.is_empty() {
                 if let Some(ref src) = sc.source {
                     slot.set_target(src);
                 }
@@ -430,7 +452,7 @@ fn apply_profile(app: &mut App, name: &str) {
         app.settings.contrast = contrast;
         app.settings.saturation = saturation;
         app.settings.colormap = colormap_name.to_string();
-        if app.args.target_object.is_none() {
+        if app.args.target_object.is_empty() {
             if let Some(source) = profile.audio.source.as_deref() {
                 apply_capture_source(app, source);
             }

@@ -9,9 +9,9 @@ mod windows;
 #[derive(Parser, Debug, Clone)]
 #[command(name = "vividspektrum", about = "PipeWire live spectrogram (Wayland window)")]
 pub struct Args {
-    #[arg(long, help = "PipeWire/PulseAudio source name or object id (a .monitor source captures output audio)")]
-    pub target_object: Option<String>,
-    #[arg(long, help = "Built-in profile: default, personal")]
+    #[arg(long, help = "PipeWire/PulseAudio source name or object id. Repeat --target to start multiple sources (e.g. --target <output.monitor> --target <input>)")]
+    pub target_object: Vec<String>,
+    #[arg(long, help = "Built-in profile: default, personal, singing-practice")]
     pub profile: Option<String>,
     #[arg(long, help = "Path to a TOML profile file")]
     pub config: Option<std::path::PathBuf>,

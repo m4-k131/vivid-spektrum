@@ -103,7 +103,7 @@ impl App {
         let rtl = if args.legacy_vertical_scroll { false } else { img.map_or(true, |i| i.scroll_right_to_left) };
 
         let history = effective_spectrogram_history(args.history);
-        let capture_target = args.target_object.clone().or_else(|| profile.audio.source.clone());
+        let capture_target = args.target_object.first().cloned().or_else(|| profile.audio.source.clone());
         let source_list = spektrum_core::cpal::output_device_names();
         let source = capture_target.clone().unwrap_or_else(|| "default output".to_string());
 
@@ -130,14 +130,34 @@ impl App {
         slot.prog.overlay_opacity = overlay_opacity;
         slot.prog.overlay_thickness = overlay_thickness;
 
+        let mut sources = vec![slot];
+
+        for (i, extra_target) in args.target_object.iter().skip(1).enumerate() {
+            let id = i + 1;
+            if id >= MAX_SOURCES { break; }
+            let (extra_slot, _tx) = create_source_slot(
+                id,
+                extra_target.clone(),
+                &spectrum,
+                "magma",
+                1.0,
+                1.0,
+                0.5,
+                history,
+                dev,
+                debug_profile,
+            );
+            sources.push(extra_slot);
+        }
+
         let mut settings = SettingsState::new(
             true, contrast, saturation, colormap_name, profile_name, "default",
             overlay_name.clone(), source, &spectrum, history as f32,
         );
-        settings.source_labels = vec!["Source 1".to_string()];
+        settings.source_labels = sources.iter().map(|s| s.label.clone()).collect();
 
         Self {
-            sources: vec![slot],
+            sources,
             settings,
             args,
             spectrum,
@@ -367,7 +387,7 @@ fn apply_profile(app: &mut App, name: &str) {
                 slot.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
                 slot.colormap_name = sc.colormap.clone();
             }
-            if app.args.target_object.is_none() {
+            if app.args.target_object.is_empty() {
                 if let Some(ref src) = sc.source {
                     slot.set_target(src);
                 }
@@ -403,7 +423,7 @@ fn apply_profile(app: &mut App, name: &str) {
         app.settings.contrast = contrast;
         app.settings.saturation = saturation;
         app.settings.colormap = colormap_name;
-        if app.args.target_object.is_none() {
+        if app.args.target_object.is_empty() {
             if let Some(source) = profile.audio.source {
                 if let Some(slot) = app.sources.get(active) {
                     slot.set_target(&source);
