@@ -165,7 +165,7 @@ impl App {
             }
         });
         let overlay_name = args.overlay.clone().unwrap_or_else(|| profile.colors.overlay.clone());
-        let (overlay_lines, overlay_color, overlay_opacity, overlay_thickness) = compute_overlay(&overlay_name, &spectrum);
+        let (overlay_lines, overlay_color, overlay_opacity, overlay_thickness) = compute_overlay(&overlay_name, &spectrum, 0);
         Self {
             prog: SpectrogramProgram {
                 pending_spectra,
@@ -216,16 +216,18 @@ fn list_overlay_names() -> Vec<String> {
     names
 }
 
-fn compute_overlay(name: &str, spectrum: &SpectrumConfig) -> (Vec<f32>, [f32; 3], f32, f32) {
+fn compute_overlay(name: &str, spectrum: &SpectrumConfig, semitone_shift: i32) -> (Vec<f32>, [f32; 3], f32, f32) {
     if name == "none" || name.is_empty() { return (Vec::new(), [0.9, 0.9, 0.9], 0.0, 0.003); }
     let Some(config) = overlay::load_overlay(name) else { return (Vec::new(), [0.9, 0.9, 0.9], 0.0, 0.003); };
+    let shift_ratio = 2.0f32.powf(semitone_shift as f32 / 12.0);
     let f_min = spectrum.f_min_hz;
     let f_max = spectrum.f_max_hz;
     let range = (f_max / f_min).ln();
     let exponent = spectrum.freq_scale_exp.max(0.1);
     let lines = config.lines.iter()
-        .filter(|line| line.freq >= f_min && line.freq <= f_max)
-        .map(|line| 1.0 - ((line.freq / f_min).ln() / range).powf(1.0 / exponent))
+        .map(|line| line.freq * shift_ratio)
+        .filter(|freq| *freq >= f_min && *freq <= f_max)
+        .map(|freq| 1.0 - ((freq / f_min).ln() / range).powf(1.0 / exponent))
         .collect();
     (
         lines,
@@ -237,7 +239,8 @@ fn compute_overlay(name: &str, spectrum: &SpectrumConfig) -> (Vec<f32>, [f32; 3]
 
 fn apply_overlay(app: &mut App, name: &str) {
     app.settings.overlay = name.to_string();
-    let (lines, color, opacity, thickness) = compute_overlay(name, &app.spectrum);
+    app.settings.semitone_shift = 0;
+    let (lines, color, opacity, thickness) = compute_overlay(name, &app.spectrum, app.settings.semitone_shift);
     app.prog.overlay_lines = lines;
     app.prog.overlay_color = color;
     app.prog.overlay_opacity = opacity;
@@ -399,6 +402,16 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
                 SettingsMessage::SetDspSettings(name) => apply_dsp_settings(app, &name),
                 SettingsMessage::SetOverlay(name) => apply_overlay(app, &name),
+                SettingsMessage::OverlayShift(delta) => {
+                    app.settings.semitone_shift += delta;
+                    if app.settings.overlay != "none" {
+                        let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum, app.settings.semitone_shift);
+                        app.prog.overlay_lines = lines;
+                        app.prog.overlay_color = color;
+                        app.prog.overlay_opacity = opacity;
+                        app.prog.overlay_thickness = thickness;
+                    }
+                }
                 SettingsMessage::SetSource(source) => {
                     app.capture_tx.send(source.clone()).ok();
                     app.settings.source = source;
