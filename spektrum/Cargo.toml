@@ -9,11 +9,6 @@ default-run = "vividspektrum"
 name = "vividspektrum"
 path = "src/main.rs"
 
-[[bin]]
-name = "kde_overlay"
-path = "src/bin/kde_overlay.rs"
-required-features = []
-
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
