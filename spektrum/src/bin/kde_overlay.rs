@@ -179,6 +179,7 @@ mod inner {
             overlay_color: [0.9, 0.9, 0.9],
             overlay_opacity: 0.6,
             overlay_thickness: 0.003,
+            opacity: 1.0,
         };
 
         let anchor = parse_anchor(&args.anchor);

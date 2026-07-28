@@ -112,6 +112,7 @@ impl Preview {
                 overlay_color: [0.9, 0.9, 0.9],
                 overlay_opacity: 0.6,
                 overlay_thickness: 0.003,
+                opacity: 1.0,
             },
             scratch: Vec::with_capacity(args.hop.max(1)),
         }

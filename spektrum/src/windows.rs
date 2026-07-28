@@ -1,8 +1,8 @@
 use crate::Args;
 use spektrum::dev::{effective_spectrogram_history, SpectrogramDevConfig};
 use spektrum::settings::{DspSlider, SettingsMessage, SettingsState};
-use spektrum::spectrogram::SpectrogramProgram;
-use spektrum_core::{overlay, profiles, resolve_colormap, spectrum_output_bins, SampleRing, SpectrumConfig, SpectrumProcessor};
+use spektrum::source::{spawn_dsp_thread, DspCommand, SourceSlot};
+use spektrum_core::{overlay, profiles, resolve_colormap, spectrum_output_bins, SampleRing, SpectrumConfig};
 use iced::keyboard;
 use iced::mouse;
 use iced::widget::{container, stack};
@@ -12,13 +12,7 @@ use std::collections::VecDeque;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone)]
-enum DspCommand {
-    Restart(SpectrumConfig, u32),
-    UpdateRuntime(SpectrumConfig),
-    SetHistory(u32),
-    SetPaused(bool),
-}
+const MAX_SOURCES: usize = 4;
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -28,19 +22,17 @@ enum Message {
 }
 
 pub struct App {
-    pub prog: SpectrogramProgram,
+    sources: Vec<SourceSlot>,
     settings: SettingsState,
     args: Args,
     spectrum: SpectrumConfig,
     fullscreen: bool,
     last_click: Option<Instant>,
-    restart_tx: mpsc::Sender<DspCommand>,
-    capture_tx: mpsc::Sender<String>,
     colormaps: Vec<String>,
     profiles: Vec<String>,
     dsp_settings: Vec<String>,
     overlays: Vec<String>,
-    sources: Vec<String>,
+    source_list: Vec<String>,
 }
 
 impl App {
@@ -107,101 +99,129 @@ impl App {
         let colormap_name = args.colormap.as_deref().unwrap_or(&profile.colors.colormap);
         let contrast = args.contrast.unwrap_or(profile.colors.contrast);
         let saturation = args.saturation.unwrap_or(profile.colors.saturation);
-        let colormap = resolve_colormap(colormap_name).unwrap_or_else(|error| {
-            eprintln!("{error}; using default colormap");
-            spektrum_core::default_colormap()
-        });
-        let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
         let img = profile.image.as_ref();
         let rtl = if args.legacy_vertical_scroll { false } else { img.map_or(true, |i| i.scroll_right_to_left) };
 
         let history = effective_spectrogram_history(args.history);
-        let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
-        let pending_w = pending_spectra.clone();
-        let ring = SampleRing::new((spectrum.sample_rate as usize) * 2);
         let capture_target = args.target_object.clone().or_else(|| profile.audio.source.clone());
-        let (_audio, capture_tx) = spektrum_core::cpal::spawn_capture(capture_target.clone(), ring.clone());
-        let sources = spektrum_core::cpal::output_device_names();
-        let source = capture_target.unwrap_or_else(|| "default output".to_string());
-        let (restart_tx, restart_rx) = mpsc::channel::<DspCommand>();
-        let initial_cfg = spectrum.clone();
-        std::thread::spawn(move || {
-            let mut scratch = vec![0.0f32; 65536];
-            let mut cfg = initial_cfg;
-            let mut backlog_cap = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
-            let mut proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
-            let mut paused = false;
-            loop {
-                while let Ok(cmd) = restart_rx.try_recv() {
-                    match cmd {
-                        DspCommand::Restart(new_cfg, new_history) => {
-                            cfg = new_cfg;
-                            proc = SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
-                            backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
-                        }
-                        DspCommand::UpdateRuntime(new_cfg) => {
-                            cfg = new_cfg;
-                            proc.set_runtime_cfg(&cfg);
-                        }
-                        DspCommand::SetHistory(new_history) => {
-                            backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
-                        }
-                        DspCommand::SetPaused(value) => paused = value,
-                    }
-                }
-                let n = ring.pop_into(&mut scratch);
-                if n == 0 {
-                    std::thread::sleep(Duration::from_millis(2));
-                    continue;
-                }
-                if paused { continue; }
-                let mut cols = Vec::new();
-                proc.push_samples(&scratch[..n], &mut cols);
-                let mut q = pending_w.lock().unwrap();
-                for col in cols {
-                    while q.len() >= backlog_cap { q.pop_front(); }
-                    q.push_back(col);
-                }
-            }
-        });
+        let source_list = spektrum_core::cpal::output_device_names();
+        let source = capture_target.clone().unwrap_or_else(|| "default output".to_string());
+
+        let dev = SpectrogramDevConfig { scroll_right_to_left: rtl };
+        let debug_profile = args.debug_profile;
+
+        let (mut slot, capture_tx) = create_source_slot(
+            0,
+            source.clone(),
+            &spectrum,
+            colormap_name,
+            contrast,
+            saturation,
+            1.0,
+            history,
+            dev,
+            debug_profile,
+        );
+
         let overlay_name = args.overlay.clone().unwrap_or_else(|| profile.colors.overlay.clone());
         let (overlay_lines, overlay_color, overlay_opacity, overlay_thickness) = compute_overlay(&overlay_name, &spectrum, 0);
+        slot.prog.overlay_lines = overlay_lines;
+        slot.prog.overlay_color = overlay_color;
+        slot.prog.overlay_opacity = overlay_opacity;
+        slot.prog.overlay_thickness = overlay_thickness;
+
+        let mut settings = SettingsState::new(
+            true, contrast, saturation, colormap_name, profile_name, "default",
+            overlay_name.clone(), source, &spectrum, history as f32,
+        );
+        settings.source_labels = vec!["Source 1".to_string()];
+
         Self {
-            prog: SpectrogramProgram {
-                pending_spectra,
-                bins: spectrum_output_bins(&spectrum) as u32,
-                min_history: history,
-                paused: false,
-                dev: SpectrogramDevConfig {
-                    scroll_right_to_left: rtl,
-                },
-                colormap_lut,
-                contrast,
-                saturation,
-                debug_profile: args.debug_profile,
-                overlay_lines,
-                overlay_color,
-                overlay_opacity,
-                overlay_thickness,
-            },
-            settings: SettingsState::new(
-                true, contrast, saturation, colormap_name, profile_name, "default",
-                args.overlay.clone().unwrap_or_else(|| profile.colors.overlay.clone()),
-                source, &spectrum, history as f32,
-            ),
+            sources: vec![slot],
+            settings,
             args,
             spectrum,
             fullscreen: false,
             last_click: None,
-            restart_tx,
-            capture_tx,
             colormaps: spektrum_core::all_colormap_names(),
             profiles: profiles::list_profile_names(),
             dsp_settings: list_dsp_settings_names(),
             overlays: list_overlay_names(),
-            sources,
+            source_list,
         }
     }
+}
+
+fn create_source_slot(
+    id: usize,
+    target: String,
+    spectrum: &SpectrumConfig,
+    colormap_name: &str,
+    contrast: f32,
+    saturation: f32,
+    opacity: f32,
+    history: u32,
+    dev: SpectrogramDevConfig,
+    debug_profile: bool,
+) -> (SourceSlot, mpsc::Sender<String>) {
+    let colormap = resolve_colormap(colormap_name).unwrap_or_else(|error| {
+        eprintln!("{error}; using default colormap");
+        spektrum_core::default_colormap()
+    });
+    let colormap_lut = Arc::new(colormap.build_lut_rgba(256));
+
+    let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
+    let pending_w = pending_spectra.clone();
+    let ring = SampleRing::new((spectrum.sample_rate as usize) * 2);
+    let ring_clone = ring.clone();
+    let (_audio, capture_tx) = spektrum_core::cpal::spawn_capture(Some(target.clone()), ring_clone);
+
+    let (restart_tx, restart_rx) = mpsc::channel::<DspCommand>();
+    let initial_cfg = spectrum.clone();
+    let ring = std::sync::Mutex::new(ring);
+    spawn_dsp_thread(
+        pending_w,
+        restart_rx,
+        initial_cfg,
+        history,
+        debug_profile,
+        move |scratch| {
+            let ring = ring.lock().unwrap();
+            ring.pop_into(scratch)
+        },
+    );
+
+    let label = format!("Source {}", id + 1);
+    let prog = spektrum::spectrogram::SpectrogramProgram {
+        pending_spectra,
+        bins: spectrum_output_bins(spectrum) as u32,
+        min_history: history,
+        paused: false,
+        dev,
+        colormap_lut,
+        contrast,
+        saturation,
+        debug_profile,
+        overlay_lines: Vec::new(),
+        overlay_color: [0.9, 0.9, 0.9],
+        overlay_opacity: 0.0,
+        overlay_thickness: 0.003,
+        opacity,
+    };
+
+    let slot = SourceSlot {
+        id,
+        label,
+        target,
+        pending_spectra: prog.pending_spectra.clone(),
+        restart_tx,
+        capture_tx: Some(capture_tx),
+        prog,
+        opacity,
+        colormap_name: colormap_name.to_string(),
+    };
+
+    (slot, slot.capture_tx.clone().unwrap())
 }
 
 fn list_dsp_settings_names() -> Vec<String> {
@@ -240,16 +260,30 @@ fn compute_overlay(name: &str, spectrum: &SpectrumConfig, semitone_shift: i32) -
 fn apply_overlay(app: &mut App, name: &str) {
     app.settings.overlay = name.to_string();
     app.settings.semitone_shift = 0;
+    if name == "none" || name.is_empty() {
+        for slot in app.sources.iter_mut() {
+            slot.prog.overlay_lines.clear();
+            slot.prog.overlay_opacity = 0.0;
+        }
+        return;
+    }
     let (lines, color, opacity, thickness) = compute_overlay(name, &app.spectrum, app.settings.semitone_shift);
-    app.prog.overlay_lines = lines;
-    app.prog.overlay_color = color;
-    app.prog.overlay_opacity = opacity;
-    app.prog.overlay_thickness = thickness;
+    for slot in app.sources.iter_mut() {
+        slot.prog.overlay_lines = lines.clone();
+        slot.prog.overlay_color = color;
+        slot.prog.overlay_opacity = opacity;
+        slot.prog.overlay_thickness = thickness;
+    }
 }
 
 fn restart_dsp(app: &mut App) {
-    app.restart_tx.send(DspCommand::Restart(app.spectrum.clone(), app.prog.min_history)).ok();
-    app.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
+    let history = app.sources.first().map_or(1, |s| s.prog.min_history);
+    for slot in &app.sources {
+        slot.restart_dsp(&app.spectrum, history);
+    }
+    for slot in app.sources.iter_mut() {
+        slot.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
+    }
     let overlay = app.settings.overlay.clone();
     apply_overlay(app, &overlay);
 }
@@ -262,14 +296,19 @@ fn apply_dsp_settings(app: &mut App, name: &str) {
     let Ok(mut spectrum) = profiles::resolve_dsp_settings(name) else { return; };
     if let Some(sample_rate) = app.args.sample_rate { spectrum.sample_rate = sample_rate; }
     app.spectrum = spectrum;
-    app.settings.from_spectrum(&app.spectrum, app.prog.min_history as f32);
+    let history = app.sources.first().map_or(1, |s| s.prog.min_history);
+    app.settings.from_spectrum(&app.spectrum, history as f32);
     app.settings.dsp_settings = name.to_string();
     restart_dsp(app);
 }
 
 fn apply_colormap(app: &mut App, name: &str) {
-    if let Ok(colormap) = resolve_colormap(name) {
-        app.prog.colormap_lut = Arc::new(colormap.build_lut_rgba(256));
+    if let Ok(cm) = resolve_colormap(name) {
+        let lut = Arc::new(cm.build_lut_rgba(256));
+        let active = app.settings.active_source;
+        if let Some(slot) = app.sources.get_mut(active) {
+            slot.update_colormap(lut, name);
+        }
         app.settings.colormap = name.to_string();
     }
 }
@@ -279,34 +318,58 @@ fn apply_edited_colormap(app: &mut App) {
     let mut stops = app.settings.colormap_stops.clone();
     stops.sort_by(|left, right| left.0.total_cmp(&right.0));
     let colormap = spektrum_core::Colormap::new(&app.settings.colormap, stops);
-    app.prog.colormap_lut = Arc::new(colormap.build_lut_rgba(256));
+    let lut = Arc::new(colormap.build_lut_rgba(256));
+    let active = app.settings.active_source;
+    if let Some(slot) = app.sources.get_mut(active) {
+        slot.prog.colormap_lut = lut;
+    }
 }
 
 fn apply_profile(app: &mut App, name: &str) {
     let Ok(profile) = profiles::resolve_profile(name) else { return; };
     let mut spectrum = profile.dsp.clone();
     if let Some(sample_rate) = app.args.sample_rate { spectrum.sample_rate = sample_rate; }
+    let history = profile.history.unwrap_or(app.sources.first().map_or(1, |s| s.prog.min_history)).max(1);
+
+    for slot in &app.sources {
+        slot.restart_dsp(&spectrum, history);
+    }
+
     app.spectrum = spectrum;
-    app.prog.min_history = profile.history.unwrap_or(app.prog.min_history).max(1);
-    app.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
-    app.prog.contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
-    app.prog.saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
+    for slot in app.sources.iter_mut() {
+        slot.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
+        slot.prog.min_history = history;
+    }
+
+    let active = app.settings.active_source;
+    let contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
+    let saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
     let colormap_name = app.args.colormap.clone().unwrap_or(profile.colors.colormap);
-    apply_colormap(app, &colormap_name);
+    if let Some(slot) = app.sources.get_mut(active) {
+        slot.prog.contrast = contrast;
+        slot.prog.saturation = saturation;
+        if let Ok(cm) = resolve_colormap(&colormap_name) {
+            slot.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
+            slot.colormap_name = colormap_name.clone();
+        }
+    }
+
     app.settings.profile = name.to_string();
     app.settings.dsp_settings = "custom".to_string();
-    app.settings.contrast = app.prog.contrast;
-    app.settings.saturation = app.prog.saturation;
-    app.settings.from_spectrum(&app.spectrum, app.prog.min_history as f32);
+    app.settings.contrast = contrast;
+    app.settings.saturation = saturation;
+    app.settings.colormap = colormap_name;
+    app.settings.from_spectrum(&app.spectrum, history as f32);
     let overlay = app.args.overlay.clone().unwrap_or(profile.colors.overlay);
     apply_overlay(app, &overlay);
     if app.args.target_object.is_none() {
         if let Some(source) = profile.audio.source {
-            app.capture_tx.send(source.clone()).ok();
+            if let Some(slot) = app.sources.get(active) {
+                slot.set_target(&source);
+            }
             app.settings.source = source;
         }
     }
-    restart_dsp(app);
 }
 
 fn refresh_libraries(app: &mut App) {
@@ -316,6 +379,8 @@ fn refresh_libraries(app: &mut App) {
 }
 
 fn current_profile(app: &App) -> profiles::Profile {
+    let active = app.settings.active_source;
+    let slot = app.sources.get(active);
     profiles::Profile {
         dsp: app.spectrum.clone(),
         colors: profiles::ColorSettings {
@@ -325,16 +390,19 @@ fn current_profile(app: &App) -> profiles::Profile {
             overlay: app.settings.overlay.clone(),
         },
         audio: profiles::AudioSettings { source: Some(app.settings.source.clone()) },
-        image: Some(profiles::ProfileImage { width: 800, height: 800, scroll_right_to_left: app.prog.dev.scroll_right_to_left }),
-        history: Some(app.prog.min_history),
+        image: Some(profiles::ProfileImage { width: 800, height: 800, scroll_right_to_left: slot.map_or(true, |s| s.prog.dev.scroll_right_to_left) }),
+        history: slot.map(|s| s.prog.min_history),
     }
 }
 
 fn apply_advanced(app: &mut App, field: DspSlider) {
     app.settings.dsp_settings = "custom".to_string();
     if field == DspSlider::History {
-        app.prog.min_history = app.settings.history.max(1.0) as u32;
-        app.restart_tx.send(DspCommand::SetHistory(app.prog.min_history)).ok();
+        let history = app.settings.history.max(1.0) as u32;
+        for slot in &mut app.sources {
+            slot.prog.min_history = history;
+            slot.set_history(history);
+        }
         return;
     }
     match field {
@@ -354,9 +422,22 @@ fn apply_advanced(app: &mut App, field: DspSlider) {
         DspSlider::History => {}
     }
     if field.is_runtime() {
-        app.restart_tx.send(DspCommand::UpdateRuntime(app.spectrum.clone())).ok();
+        for slot in &app.sources {
+            slot.update_runtime(&app.spectrum);
+        }
     } else {
         restart_dsp(app);
+    }
+}
+
+fn sync_active_source_settings(app: &mut App) {
+    let active = app.settings.active_source;
+    if let Some(slot) = app.sources.get(active) {
+        app.settings.contrast = slot.prog.contrast;
+        app.settings.saturation = slot.prog.saturation;
+        app.settings.opacity = slot.opacity;
+        app.settings.colormap = slot.colormap_name.clone();
+        app.settings.source = slot.target.clone();
     }
 }
 
@@ -383,9 +464,13 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 keyboard::Key::Character(value) if value == "m" || value == "M" => app.settings.toggle(),
                 keyboard::Key::Named(keyboard::key::Named::Escape) => app.settings.close(),
                 keyboard::Key::Named(keyboard::key::Named::Space) => {
-                    app.prog.paused = !app.prog.paused;
-                    app.prog.pending_spectra.lock().unwrap().clear();
-                    app.restart_tx.send(DspCommand::SetPaused(app.prog.paused)).ok();
+                    let paused = app.sources.first().map_or(false, |s| s.prog.paused);
+                    let new_paused = !paused;
+                    for slot in &mut app.sources {
+                        slot.prog.paused = new_paused;
+                        slot.prog.pending_spectra.lock().unwrap().clear();
+                        slot.set_paused(new_paused);
+                    }
                 }
                 _ => {}
             }
@@ -396,8 +481,27 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
             match message {
                 SettingsMessage::Toggle => app.settings.toggle(),
                 SettingsMessage::Close => app.settings.close(),
-                SettingsMessage::SetContrast(value) => { app.prog.contrast = value; app.settings.contrast = value; }
-                SettingsMessage::SetSaturation(value) => { app.prog.saturation = value; app.settings.saturation = value; }
+                SettingsMessage::SetContrast(value) => {
+                    let active = app.settings.active_source;
+                    if let Some(slot) = app.sources.get_mut(active) {
+                        slot.update_contrast(value);
+                    }
+                    app.settings.contrast = value;
+                }
+                SettingsMessage::SetSaturation(value) => {
+                    let active = app.settings.active_source;
+                    if let Some(slot) = app.sources.get_mut(active) {
+                        slot.update_saturation(value);
+                    }
+                    app.settings.saturation = value;
+                }
+                SettingsMessage::SetOpacity(value) => {
+                    let active = app.settings.active_source;
+                    if let Some(slot) = app.sources.get_mut(active) {
+                        slot.update_opacity(value);
+                    }
+                    app.settings.opacity = value;
+                }
                 SettingsMessage::SetColormap(name) => apply_colormap(app, &name),
                 SettingsMessage::SetProfile(name) => apply_profile(app, &name),
                 SettingsMessage::SetDspSettings(name) => apply_dsp_settings(app, &name),
@@ -406,15 +510,63 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.settings.semitone_shift += delta;
                     if app.settings.overlay != "none" {
                         let (lines, color, opacity, thickness) = compute_overlay(&app.settings.overlay, &app.spectrum, app.settings.semitone_shift);
-                        app.prog.overlay_lines = lines;
-                        app.prog.overlay_color = color;
-                        app.prog.overlay_opacity = opacity;
-                        app.prog.overlay_thickness = thickness;
+                        for slot in app.sources.iter_mut() {
+                            slot.prog.overlay_lines = lines.clone();
+                            slot.prog.overlay_color = color;
+                            slot.prog.overlay_opacity = opacity;
+                            slot.prog.overlay_thickness = thickness;
+                        }
                     }
                 }
                 SettingsMessage::SetSource(source) => {
-                    app.capture_tx.send(source.clone()).ok();
+                    let active = app.settings.active_source;
+                    if let Some(slot) = app.sources.get(active) {
+                        slot.set_target(&source);
+                    }
                     app.settings.source = source;
+                }
+                SettingsMessage::AddSource => {
+                    if app.sources.len() < MAX_SOURCES {
+                        let id = app.sources.len();
+                        let dev = app.sources.first().map(|s| s.prog.dev).unwrap_or_default();
+                        let history = app.sources.first().map(|s| s.prog.min_history).unwrap_or(1);
+                        let debug_profile = app.sources.first().map(|s| s.prog.debug_profile).unwrap_or(false);
+                        let default_target = app.source_list.first().cloned().unwrap_or_else(|| "default output".to_string());
+                        let (slot, _tx) = create_source_slot(
+                            id,
+                            default_target,
+                            &app.spectrum,
+                            "magma",
+                            1.0,
+                            1.0,
+                            0.5,
+                            history,
+                            dev,
+                            debug_profile,
+                        );
+                        app.sources.push(slot);
+                        app.settings.source_labels = app.sources.iter().map(|s| s.label.clone()).collect();
+                    }
+                }
+                SettingsMessage::RemoveSource(idx) => {
+                    if app.sources.len() > 1 && idx < app.sources.len() {
+                        app.sources.remove(idx);
+                        for (i, slot) in app.sources.iter_mut().enumerate() {
+                            slot.id = i;
+                            slot.label = format!("Source {}", i + 1);
+                        }
+                        app.settings.source_labels = app.sources.iter().map(|s| s.label.clone()).collect();
+                        if app.settings.active_source >= app.sources.len() {
+                            app.settings.active_source = app.sources.len() - 1;
+                        }
+                        sync_active_source_settings(app);
+                    }
+                }
+                SettingsMessage::SelectSource(idx) => {
+                    if idx < app.sources.len() {
+                        app.settings.active_source = idx;
+                        sync_active_source_settings(app);
+                    }
                 }
                 SettingsMessage::OpenManager(manager) => {
                     app.settings.library_name.clear();
@@ -536,16 +688,26 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
 }
 
 fn view(app: &App) -> Element<'_, Message> {
-    let spectrogram = container(Shader::new(app.prog.clone()).width(Length::Fill).height(Length::Fill))
+    let dev = app.sources.first().map(|s| s.prog.dev).unwrap_or_default();
+    let debug_profile = app.sources.first().map(|s| s.prog.debug_profile).unwrap_or(false);
+    let multi = spektrum::spectrogram::MultiSpectrogramProgram {
+        sources: app.sources.iter().map(|s| s.prog.clone()).collect(),
+        dev,
+        debug_profile,
+    };
+    let spectrogram = container(Shader::new(multi).width(Length::Fill).height(Length::Fill))
         .width(Length::Fill)
         .height(Length::Fill);
     if !app.settings.open { return spectrogram.into(); }
-    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.dsp_settings, &app.overlays, &app.sources, app.prog.paused)
+    let active = app.settings.active_source;
+    let paused = app.sources.get(active).map_or(false, |s| s.prog.paused);
+    let rtl = app.sources.get(active).map_or(true, |s| s.prog.dev.scroll_right_to_left);
+    let menu = app.settings.view(&app.colormaps, &app.profiles, &app.dsp_settings, &app.overlays, &app.source_list, paused)
         .map(Message::Settings);
     let panel: Element<'_, Message> = container(menu)
         .width(Length::Fill)
         .height(Length::Fill)
-        .align_x(if app.prog.dev.scroll_right_to_left { iced::alignment::Horizontal::Left } else { iced::alignment::Horizontal::Right })
+        .align_x(if rtl { iced::alignment::Horizontal::Left } else { iced::alignment::Horizontal::Right })
         .into();
     stack![spectrogram, panel].into()
 }
