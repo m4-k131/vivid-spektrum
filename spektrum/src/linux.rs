@@ -425,6 +425,10 @@ fn apply_profile(app: &mut App, name: &str) {
         app.settings.opacity = first.opacity;
         app.settings.colormap = first.colormap.clone();
     } else {
+        while app.sources.len() > 1 {
+            app.sources.pop();
+            app._pw_handles.pop();
+        }
         let colormap_name = app.args.colormap.as_deref()
             .unwrap_or(&profile.colors.colormap);
         let contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
@@ -442,7 +446,8 @@ fn apply_profile(app: &mut App, name: &str) {
             slot.prog.min_history = history;
             slot.prog.dev.scroll_right_to_left = rtl;
         }
-        let active = app.settings.active_source;
+        let active = app.settings.active_source.min(app.sources.len() - 1);
+        app.settings.active_source = active;
         if let Some(slot) = app.sources.get_mut(active) {
             slot.prog.contrast = contrast;
             slot.prog.saturation = saturation;
@@ -452,6 +457,7 @@ fn apply_profile(app: &mut App, name: &str) {
         app.settings.contrast = contrast;
         app.settings.saturation = saturation;
         app.settings.colormap = colormap_name.to_string();
+        app.settings.source_labels = app.sources.iter().map(|s| s.label.clone()).collect();
         if app.args.target_object.is_empty() {
             if let Some(source) = profile.audio.source.as_deref() {
                 apply_capture_source(app, source);

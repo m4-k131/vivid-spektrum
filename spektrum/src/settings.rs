@@ -332,6 +332,13 @@ impl SettingsState {
         let controls = column![
             text("Right-click or press M to toggle this menu.").size(11),
             if paused { text("Spectrogram paused — press Space to resume.").size(12) } else { text("") },
+            label_row("Profile", "A profile combines sources, colors, overlay, and DSP settings."),
+            row![
+                pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
+                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
+            ].spacing(6),
+            text("Sources · colors · overlay · DSP").size(11),
+            iced::widget::rule::horizontal(1),
             text("Sources").size(14),
             self.source_list_view(),
             label_row("Colormap", "Color map used to map magnitude to color."),
@@ -366,12 +373,6 @@ impl SettingsState {
                 .width(Length::Fill),
             iced::widget::rule::horizontal(1),
             text("Global").size(14),
-            label_row("Profile", "A profile combines colors, overlay, audio source, and DSP settings."),
-            row![
-                pick_list(profiles, Some(self.profile.clone()), SettingsMessage::SetProfile).width(Length::Fill),
-                button("…").on_press(SettingsMessage::OpenManager(LibraryManager::Profiles)),
-            ].spacing(6),
-            text("Colors · overlay · audio source · DSP").size(11),
             label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning). + and - shift all lines by one semitone."),
             row![
                 pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay).width(Length::Fill),

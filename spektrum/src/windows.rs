@@ -401,7 +401,11 @@ fn apply_profile(app: &mut App, name: &str) {
         app.settings.opacity = first.opacity;
         app.settings.colormap = first.colormap.clone();
     } else {
-        let active = app.settings.active_source;
+        while app.sources.len() > 1 {
+            app.sources.pop();
+        }
+        let active = app.settings.active_source.min(app.sources.len() - 1);
+        app.settings.active_source = active;
         let contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
         let saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
         let colormap_name = app.args.colormap.clone().unwrap_or(profile.colors.colormap);
@@ -423,6 +427,7 @@ fn apply_profile(app: &mut App, name: &str) {
         app.settings.contrast = contrast;
         app.settings.saturation = saturation;
         app.settings.colormap = colormap_name;
+        app.settings.source_labels = app.sources.iter().map(|s| s.label.clone()).collect();
         if app.args.target_object.is_empty() {
             if let Some(source) = profile.audio.source {
                 if let Some(slot) = app.sources.get(active) {
