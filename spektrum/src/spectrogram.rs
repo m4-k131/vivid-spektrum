@@ -23,9 +23,13 @@ struct Uniforms {
     overlay_b: vec4<f32>,
     overlay_c: vec4<f32>,
     opacity: f32,
+    shared_bg: u32,
+    is_first: u32,
+    bg_r: f32,
+    bg_g: f32,
+    bg_b: f32,
     _pad0: f32,
     _pad1: f32,
-    _pad2: f32,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var tex: texture_2d<f32>;
@@ -88,6 +92,16 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
     if (overlay_alpha > 0.0) {
         c = mix(c, u.overlay_color.rgb, overlay_alpha * u.overlay_color.a);
     }
+    if (u.shared_bg == 1u) {
+        let bg = vec3(u.bg_r, u.bg_g, u.bg_b);
+        let signal_alpha = smoothstep(0.0, 0.03, mag) * u.opacity;
+        if (u.is_first == 1u) {
+            let final_color = mix(bg, c, signal_alpha);
+            return vec4(final_color, 1.0);
+        } else {
+            return vec4(c, signal_alpha);
+        }
+    }
     return vec4(c, u.opacity);
 }
 "#;
@@ -108,7 +122,13 @@ struct Uniforms {
     overlay_b: [f32; 4],
     overlay_c: [f32; 4],
     opacity: f32,
-    _pad: [f32; 3],
+    shared_bg: u32,
+    is_first: u32,
+    bg_r: f32,
+    bg_g: f32,
+    bg_b: f32,
+    _pad0: f32,
+    _pad1: f32,
 }
 
 #[derive(Clone)]
@@ -502,7 +522,13 @@ impl shader::Primitive for SpectrogramPrimitive {
             overlay_b,
             overlay_c,
             opacity: self.opacity,
-            _pad: [0.0; 3],
+            shared_bg: 0,
+            is_first: 1,
+            bg_r: 0.0,
+            bg_g: 0.0,
+            bg_b: 0.0,
+            _pad0: 0.0,
+            _pad1: 0.0,
         };
         queue.write_buffer(&pipeline.uniform, 0, bytemuck::bytes_of(&u));
         if self.debug_profile {
@@ -588,6 +614,7 @@ pub struct MultiSpectrogramProgram {
     pub sources: Vec<SpectrogramProgram>,
     pub dev: SpectrogramDevConfig,
     pub debug_profile: bool,
+    pub shared_bg: bool,
 }
 
 pub struct SourceLayer {
@@ -609,6 +636,7 @@ pub struct MultiSpectrogramPrimitive {
     sources: Vec<SourceLayer>,
     dev: SpectrogramDevConfig,
     debug_profile: bool,
+    shared_bg: bool,
 }
 
 impl fmt::Debug for MultiSpectrogramPrimitive {
@@ -834,6 +862,31 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
         let mode = if self.dev.scroll_right_to_left { 0u32 } else { 1 };
         let prepare_start = Instant::now();
 
+        let (bg_r, bg_g, bg_b) = if self.shared_bg {
+            let mut darkest_lum = f32::MAX;
+            let mut dr = 0.0f32;
+            let mut dg = 0.0f32;
+            let mut db = 0.0f32;
+            for src in &self.sources {
+                let lut = &*src.colormap_lut;
+                if let Some(&c0) = lut.first() {
+                    let r = c0[0] as f32 / 255.0;
+                    let g = c0[1] as f32 / 255.0;
+                    let b = c0[2] as f32 / 255.0;
+                    let lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                    if lum < darkest_lum {
+                        darkest_lum = lum;
+                        dr = r;
+                        dg = g;
+                        db = b;
+                    }
+                }
+            }
+            (dr, dg, db)
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+
         for (i, src) in self.sources.iter().enumerate() {
             let gpu = &mut pipeline.sources[i];
             let prev_write_row = gpu.write_row;
@@ -972,7 +1025,13 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
                 overlay_b,
                 overlay_c,
                 opacity: src.opacity,
-                _pad: [0.0; 3],
+                shared_bg: if self.shared_bg { 1 } else { 0 },
+                is_first: if i == 0 { 1 } else { 0 },
+                bg_r,
+                bg_g,
+                bg_b,
+                _pad0: 0.0,
+                _pad1: 0.0,
             };
             queue.write_buffer(&gpu.uniform, 0, bytemuck::bytes_of(&u));
 
@@ -1055,6 +1114,7 @@ impl<Message: 'static> shader::Program<Message> for MultiSpectrogramProgram {
             sources,
             dev: self.dev,
             debug_profile: self.debug_profile,
+            shared_bg: self.shared_bg,
         }
     }
     fn mouse_interaction(

@@ -1,5 +1,5 @@
 //! Shared settings overlay panel used by the live spectrogram window (Linux & Windows).
-use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, slider, text, text_input, Space, Tooltip};
+use iced::widget::{button, checkbox, column, container, pick_list, row, scrollable, slider, text, text_input, toggler, Space, Tooltip};
 use iced::widget::tooltip::Position;
 use iced::{Alignment, Element, Length, Theme};
 use spektrum_core::{BandAggregation, SpectrumConfig, Transform, Weighting, WindowFunction};
@@ -188,6 +188,7 @@ pub enum SettingsMessage {
     SetWeighting(Weighting),
     SetTransform(Transform),
     SetCentered(bool),
+    SetSharedBg(bool),
 }
 
 pub struct SettingsState {
@@ -209,6 +210,7 @@ pub struct SettingsState {
     pub manager: Option<LibraryManager>,
     pub library_name: String,
     pub colormap_stops: Vec<(f32, f32, f32, f32)>,
+    pub shared_bg: bool,
 }
 
 impl SettingsState {
@@ -243,6 +245,7 @@ impl SettingsState {
             manager: None,
             library_name: String::new(),
             colormap_stops: Vec::new(),
+            shared_bg: true,
         }
     }
 
@@ -373,6 +376,13 @@ impl SettingsState {
                 .width(Length::Fill),
             iced::widget::rule::horizontal(1),
             text("Global").size(14),
+            row![
+                text("Shared background").size(12),
+                Space::new().width(Length::Fill),
+                info_icon("Use the darkest colormap color as a shared background. Prevents over-darkening when stacking multiple sources."),
+            ]
+            .align_y(Alignment::Center),
+            toggler(self.shared_bg).on_toggle(SettingsMessage::SetSharedBg),
             label_row("Overlay", "Optional frequency-line overlays (e.g. A440, guitar tuning). + and - shift all lines by one semitone."),
             row![
                 pick_list(overlays, Some(self.overlay.clone()), SettingsMessage::SetOverlay).width(Length::Fill),

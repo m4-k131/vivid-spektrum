@@ -968,6 +968,9 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     app.spectrum.centered = c;
                     restart_dsp(app);
                 }
+                SettingsMessage::SetSharedBg(v) => {
+                    app.settings.shared_bg = v;
+                }
             }
             Task::none()
         }
@@ -981,6 +984,7 @@ fn view(app: &App) -> Element<'_, Message> {
         sources: app.sources.iter().map(|s| s.prog.clone()).collect(),
         dev,
         debug_profile,
+        shared_bg: app.settings.shared_bg,
     };
     let spectrogram = container(
         Shader::new(multi).width(Length::Fill).height(Length::Fill)
