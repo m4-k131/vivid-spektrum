@@ -630,6 +630,10 @@ struct SourceGpuState {
     bind_group: wgpu::BindGroup,
     write_row: u32,
     scroll: f32,
+    prof_last_report: Instant,
+    prof_prepare_us: u64,
+    prof_cols_uploaded: u64,
+    prof_frames: u64,
 }
 
 pub struct MultiSpectrogramGpu {
@@ -699,6 +703,10 @@ fn create_source_gpu(
         bind_group,
         write_row: 0,
         scroll: 0.0,
+        prof_last_report: Instant::now(),
+        prof_prepare_us: 0,
+        prof_cols_uploaded: 0,
+        prof_frames: 0,
     }
 }
 
@@ -824,9 +832,11 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
         }
 
         let mode = if self.dev.scroll_right_to_left { 0u32 } else { 1 };
+        let prepare_start = Instant::now();
 
         for (i, src) in self.sources.iter().enumerate() {
             let gpu = &mut pipeline.sources[i];
+            let prev_write_row = gpu.write_row;
             let w = src.bins.max(1);
             let h = src.history.max(1);
             let need = device.limits().max_texture_dimension_2d;
@@ -965,6 +975,31 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
                 _pad: [0.0; 3],
             };
             queue.write_buffer(&gpu.uniform, 0, bytemuck::bytes_of(&u));
+
+            if self.debug_profile {
+                let cols_this_frame = if last_y.is_some() { gpu.write_row.wrapping_sub(prev_write_row) as u64 } else { 0 };
+                gpu.prof_prepare_us += prepare_start.elapsed().as_micros() as u64;
+                gpu.prof_cols_uploaded += cols_this_frame;
+                gpu.prof_frames += 1;
+                let elapsed = gpu.prof_last_report.elapsed();
+                if elapsed >= std::time::Duration::from_secs(1) {
+                    let secs = elapsed.as_secs_f64();
+                    let queue_depth = src.pending_spectra.lock().unwrap().len();
+                    eprintln!(
+                        "[profile src {}] {:.1} fps | prepare: {:.1}ms/frame | cols/sec: {:.0} | queue: {} | texture: {}x{}",
+                        i,
+                        gpu.prof_frames as f64 / secs,
+                        (gpu.prof_prepare_us as f64 / gpu.prof_frames.max(1) as f64) / 1000.0,
+                        gpu.prof_cols_uploaded as f64 / secs,
+                        queue_depth,
+                        w, h,
+                    );
+                    gpu.prof_last_report = Instant::now();
+                    gpu.prof_prepare_us = 0;
+                    gpu.prof_cols_uploaded = 0;
+                    gpu.prof_frames = 0;
+                }
+            }
         }
     }
     fn draw(
