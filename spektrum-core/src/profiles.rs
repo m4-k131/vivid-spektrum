@@ -10,6 +10,30 @@ pub struct Profile {
     pub image: Option<ProfileImage>,
     #[serde(default)]
     pub history: Option<u32>,
+    #[serde(default)]
+    pub sources: Vec<SourceConfig>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct SourceConfig {
+    pub source: Option<String>,
+    pub colormap: String,
+    pub contrast: f32,
+    pub saturation: f32,
+    pub opacity: f32,
+}
+
+impl Default for SourceConfig {
+    fn default() -> Self {
+        Self {
+            source: None,
+            colormap: "magma".into(),
+            contrast: 1.0,
+            saturation: 1.0,
+            opacity: 1.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -82,6 +106,7 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
             audio: AudioSettings::default(),
             image: None,
             history: None,
+            sources: Vec::new(),
         }),
         "personal" => Some(Profile {
             dsp: personal_dsp_settings(),
@@ -98,13 +123,42 @@ pub fn builtin_profile(name: &str) -> Option<Profile> {
                 scroll_right_to_left: true,
             }),
             history: None,
+            sources: Vec::new(),
+        }),
+        "singing-practice" => Some(Profile {
+            dsp: builtin_dsp_settings("default").unwrap(),
+            colors: ColorSettings {
+                colormap: "turbo".to_string(),
+                contrast: 1.0,
+                saturation: 1.0,
+                overlay: "none".to_string(),
+            },
+            audio: AudioSettings::default(),
+            image: None,
+            history: None,
+            sources: vec![
+                SourceConfig {
+                    source: None,
+                    colormap: "turbo".into(),
+                    contrast: 1.0,
+                    saturation: 1.0,
+                    opacity: 1.0,
+                },
+                SourceConfig {
+                    source: None,
+                    colormap: "nebula".into(),
+                    contrast: 1.0,
+                    saturation: 1.0,
+                    opacity: 0.7,
+                },
+            ],
         }),
         _ => None,
     }
 }
 
 pub fn builtin_profile_names() -> &'static [&'static str] {
-    &["default", "personal"]
+    &["default", "personal", "singing-practice"]
 }
 
 pub fn user_profiles_dir() -> std::path::PathBuf {

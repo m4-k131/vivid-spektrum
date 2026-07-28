@@ -330,46 +330,96 @@ fn apply_profile(app: &mut App, name: &str) {
     let mut spectrum = profile.dsp.clone();
     if let Some(sample_rate) = app.args.sample_rate { spectrum.sample_rate = sample_rate; }
     let history = profile.history.unwrap_or(app.sources.first().map_or(1, |s| s.prog.min_history)).max(1);
+    let dev = app.sources.first().map_or(SpectrogramDevConfig::default(), |s| s.prog.dev);
+    let debug_profile = app.sources.first().map_or(app.args.debug_profile, |s| s.prog.debug_profile);
 
-    for slot in &app.sources {
-        slot.restart_dsp(&spectrum, history);
+    if !profile.sources.is_empty() {
+        while app.sources.len() > 1 {
+            app.sources.pop();
+        }
+        let default_target = app.source_list.first().cloned().unwrap_or_else(|| "default output".to_string());
+        let n = profile.sources.len().min(MAX_SOURCES);
+        while app.sources.len() < n {
+            let id = app.sources.len();
+            let (slot, _tx) = create_source_slot(
+                id,
+                default_target.clone(),
+                &spectrum,
+                "magma",
+                1.0,
+                1.0,
+                0.5,
+                history,
+                dev,
+                debug_profile,
+            );
+            app.sources.push(slot);
+        }
+        for (i, sc) in profile.sources.iter().take(n).enumerate() {
+            let slot = &mut app.sources[i];
+            slot.restart_dsp(&spectrum, history);
+            slot.prog.bins = spectrum_output_bins(&spectrum) as u32;
+            slot.prog.min_history = history;
+            slot.prog.contrast = sc.contrast;
+            slot.prog.saturation = sc.saturation;
+            slot.prog.opacity = sc.opacity;
+            if let Ok(cm) = resolve_colormap(&sc.colormap) {
+                slot.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
+                slot.colormap_name = sc.colormap.clone();
+            }
+            if app.args.target_object.is_none() {
+                if let Some(ref src) = sc.source {
+                    slot.set_target(src);
+                }
+            }
+        }
+        app.settings.active_source = 0;
+        app.settings.source_labels = app.sources.iter().map(|s| s.label.clone()).collect();
+        let first = &profile.sources[0];
+        app.settings.contrast = first.contrast;
+        app.settings.saturation = first.saturation;
+        app.settings.opacity = first.opacity;
+        app.settings.colormap = first.colormap.clone();
+    } else {
+        let active = app.settings.active_source;
+        let contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
+        let saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
+        let colormap_name = app.args.colormap.clone().unwrap_or(profile.colors.colormap);
+        for slot in &app.sources {
+            slot.restart_dsp(&spectrum, history);
+        }
+        for slot in app.sources.iter_mut() {
+            slot.prog.bins = spectrum_output_bins(&spectrum) as u32;
+            slot.prog.min_history = history;
+        }
+        if let Some(slot) = app.sources.get_mut(active) {
+            slot.prog.contrast = contrast;
+            slot.prog.saturation = saturation;
+            if let Ok(cm) = resolve_colormap(&colormap_name) {
+                slot.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
+                slot.colormap_name = colormap_name.clone();
+            }
+        }
+        app.settings.contrast = contrast;
+        app.settings.saturation = saturation;
+        app.settings.colormap = colormap_name;
+        if app.args.target_object.is_none() {
+            if let Some(source) = profile.audio.source {
+                if let Some(slot) = app.sources.get(active) {
+                    slot.set_target(&source);
+                }
+                app.settings.source = source;
+            }
+        }
     }
 
     app.spectrum = spectrum;
-    for slot in app.sources.iter_mut() {
-        slot.prog.bins = spectrum_output_bins(&app.spectrum) as u32;
-        slot.prog.min_history = history;
-    }
-
-    let active = app.settings.active_source;
-    let contrast = app.args.contrast.unwrap_or(profile.colors.contrast);
-    let saturation = app.args.saturation.unwrap_or(profile.colors.saturation);
-    let colormap_name = app.args.colormap.clone().unwrap_or(profile.colors.colormap);
-    if let Some(slot) = app.sources.get_mut(active) {
-        slot.prog.contrast = contrast;
-        slot.prog.saturation = saturation;
-        if let Ok(cm) = resolve_colormap(&colormap_name) {
-            slot.prog.colormap_lut = Arc::new(cm.build_lut_rgba(256));
-            slot.colormap_name = colormap_name.clone();
-        }
-    }
-
     app.settings.profile = name.to_string();
     app.settings.dsp_settings = "custom".to_string();
-    app.settings.contrast = contrast;
-    app.settings.saturation = saturation;
-    app.settings.colormap = colormap_name;
     app.settings.from_spectrum(&app.spectrum, history as f32);
     let overlay = app.args.overlay.clone().unwrap_or(profile.colors.overlay);
     apply_overlay(app, &overlay);
-    if app.args.target_object.is_none() {
-        if let Some(source) = profile.audio.source {
-            if let Some(slot) = app.sources.get(active) {
-                slot.set_target(&source);
-            }
-            app.settings.source = source;
-        }
-    }
+    sync_active_source_settings(app);
 }
 
 fn refresh_libraries(app: &mut App) {
@@ -381,6 +431,17 @@ fn refresh_libraries(app: &mut App) {
 fn current_profile(app: &App) -> profiles::Profile {
     let active = app.settings.active_source;
     let slot = app.sources.get(active);
+    let sources: Vec<profiles::SourceConfig> = if app.sources.len() > 1 {
+        app.sources.iter().map(|s| profiles::SourceConfig {
+            source: Some(s.target.clone()),
+            colormap: s.colormap_name.clone(),
+            contrast: s.prog.contrast,
+            saturation: s.prog.saturation,
+            opacity: s.prog.opacity,
+        }).collect()
+    } else {
+        Vec::new()
+    };
     profiles::Profile {
         dsp: app.spectrum.clone(),
         colors: profiles::ColorSettings {
@@ -392,6 +453,7 @@ fn current_profile(app: &App) -> profiles::Profile {
         audio: profiles::AudioSettings { source: Some(app.settings.source.clone()) },
         image: Some(profiles::ProfileImage { width: 800, height: 800, scroll_right_to_left: slot.map_or(true, |s| s.prog.dev.scroll_right_to_left) }),
         history: slot.map(|s| s.prog.min_history),
+        sources,
     }
 }
 
