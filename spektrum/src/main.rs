@@ -11,7 +11,7 @@ mod windows;
 pub struct Args {
     #[arg(long, help = "PipeWire/PulseAudio source name or object id. Repeat --target to start multiple sources (e.g. --target <output.monitor> --target <input>)")]
     pub target_object: Vec<String>,
-    #[arg(long, help = "Built-in profile: default, personal, singing-practice")]
+    #[arg(long, help = "Built-in profile: medium_quality, high_quality, singing_practice")]
     pub profile: Option<String>,
     #[arg(long, help = "Path to a TOML profile file")]
     pub config: Option<std::path::PathBuf>,

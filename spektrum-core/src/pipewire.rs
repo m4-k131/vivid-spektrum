@@ -10,6 +10,14 @@ use spa::pod::Pod;
 use std::convert::TryInto;
 use std::mem;
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static CAPTURE_GEN: AtomicU64 = AtomicU64::new(0);
+
+pub fn next_capture_name(source_index: usize) -> String {
+    let gen = CAPTURE_GEN.fetch_add(1, Ordering::Relaxed);
+    format!("vividspektrum-{}-{}-{}", std::process::id(), gen, source_index)
+}
 
 pub fn pulse_sources() -> Vec<String> {
     let Ok(output) = Command::new("pactl").args(["list", "short", "sources"]).output() else {
@@ -45,11 +53,7 @@ pub fn default_pulse_output_monitor() -> Option<String> {
     (!sink.is_empty()).then(|| format!("{sink}.monitor"))
 }
 
-fn capture_application_name() -> String {
-    format!("vividspektrum-{}", std::process::id())
-}
-
-pub fn move_capture_to_pulse_source(source: &str) -> Result<(), CoreError> {
+pub fn move_capture_to_pulse_source(source: &str, application_name: &str) -> Result<(), CoreError> {
     let output = Command::new("pactl")
         .args(["list", "source-outputs"])
         .output()
@@ -57,7 +61,7 @@ pub fn move_capture_to_pulse_source(source: &str) -> Result<(), CoreError> {
     if !output.status.success() {
         return Err(CoreError::Audio("pactl could not list source outputs".to_string()));
     }
-    let application_name = format!("application.name = \"{}\"", capture_application_name());
+    let application_name = format!("application.name = \"{}\"", application_name);
     let source_output = String::from_utf8_lossy(&output.stdout)
         .split("\n\n")
         .find(|block| block.contains(&application_name))
@@ -98,15 +102,15 @@ struct LockfreeUserData {
     producer: Mutex<SampleRingProducer>,
 }
 
-pub fn spawn_capture_lockfree(target: Option<String>, producer: SampleRingProducer) -> std::thread::JoinHandle<()> {
+pub fn spawn_capture_lockfree(target: Option<String>, producer: SampleRingProducer, application_name: String) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        if let Err(e) = run_capture_lockfree(target, producer) {
+        if let Err(e) = run_capture_lockfree(target, producer, application_name) {
             eprintln!("pipewire capture ended: {}", e);
         }
     })
 }
 
-fn run_capture_lockfree(target: Option<String>, producer: SampleRingProducer) -> Result<(), CoreError> {
+fn run_capture_lockfree(target: Option<String>, producer: SampleRingProducer, application_name: String) -> Result<(), CoreError> {
     pw::init();
     let mainloop = pw::main_loop::MainLoopRc::new(None)?;
     let context = pw::context::ContextRc::new(&mainloop, None)?;
@@ -119,7 +123,7 @@ fn run_capture_lockfree(target: Option<String>, producer: SampleRingProducer) ->
         *pw::keys::MEDIA_TYPE => "Audio",
         *pw::keys::MEDIA_CATEGORY => "Capture",
         *pw::keys::MEDIA_ROLE => "Music",
-        "application.name" => capture_application_name(),
+        "application.name" => application_name,
     };
     if let Some(t) = target {
         props.insert("target.object", t);
@@ -209,7 +213,7 @@ fn run_capture(target: Option<String>, ring: SampleRing) -> Result<(), CoreError
         *pw::keys::MEDIA_TYPE => "Audio",
         *pw::keys::MEDIA_CATEGORY => "Capture",
         *pw::keys::MEDIA_ROLE => "Music",
-        "application.name" => capture_application_name(),
+        "application.name" => next_capture_name(0),
     };
     if let Some(t) = target {
         props.insert("target.object", t);

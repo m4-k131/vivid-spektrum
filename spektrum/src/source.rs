@@ -21,6 +21,7 @@ pub struct SourceSlot {
     pub prog: SpectrogramProgram,
     pub opacity: f32,
     pub colormap_name: String,
+    pub capture_name: String,
 }
 
 impl SourceSlot {

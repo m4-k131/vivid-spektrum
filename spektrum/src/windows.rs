@@ -43,12 +43,12 @@ impl App {
             profiles::resolve_profile(name)
                 .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
         } else {
-            profiles::builtin_profile("default").unwrap()
+            profiles::builtin_profile("high_quality").unwrap()
         };
         let profile_name = args.config.as_ref()
             .and_then(|path| path.file_stem().map(|name| name.to_string_lossy().into_owned()))
             .or(args.profile.clone())
-            .unwrap_or_else(|| "default".to_string());
+            .unwrap_or_else(|| "high_quality".to_string());
         let mut spectrum = profile.dsp.clone();
         if let Some(v) = args.log_bins { spectrum.log_bins = v; }
         if let Some(v) = args.window { spectrum.window_size = v; }
@@ -151,7 +151,7 @@ impl App {
         }
 
         let mut settings = SettingsState::new(
-            true, contrast, saturation, colormap_name, profile_name, "default",
+            true, contrast, saturation, colormap_name, profile_name, "high_quality",
             overlay_name.clone(), source, &spectrum, history as f32,
         );
         settings.source_labels = sources.iter().map(|s| s.label.clone()).collect();
@@ -239,6 +239,7 @@ fn create_source_slot(
         prog,
         opacity,
         colormap_name: colormap_name.to_string(),
+        capture_name: String::new(),
     };
 
     (slot, slot.capture_tx.clone().unwrap())
@@ -670,7 +671,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                 }
                 SettingsMessage::DeleteProfile => {
                     if profiles::delete_user_profile(&app.settings.profile).is_ok() {
-                        app.settings.profile = "default".to_string();
+                        app.settings.profile = "high_quality".to_string();
                         refresh_libraries(app);
                     }
                 }
@@ -815,7 +816,7 @@ fn subscription(_app: &App) -> Subscription<Message> {
 pub fn run(args: Args) -> anyhow::Result<()> {
     let profile = args.config.as_ref().and_then(|path| profiles::load_profile(path).ok())
         .or_else(|| args.profile.as_deref().and_then(|name| profiles::resolve_profile(name).ok()))
-        .unwrap_or_else(|| profiles::builtin_profile("default").unwrap());
+        .unwrap_or_else(|| profiles::builtin_profile("high_quality").unwrap());
     let image = profile.image.as_ref();
     let size = Size::new(
         args.width.unwrap_or(image.map_or(800, |config| config.width)) as f32,

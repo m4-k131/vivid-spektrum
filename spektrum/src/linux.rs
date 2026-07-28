@@ -92,9 +92,10 @@ impl App {
         );
         if let Some(target) = &capture_target {
             let target = target.clone();
+            let capture_name = slot.capture_name.clone();
             std::thread::spawn(move || {
                 for _ in 0..20 {
-                    if spektrum_core::pipewire::move_capture_to_pulse_source(&target).is_ok() {
+                    if spektrum_core::pipewire::move_capture_to_pulse_source(&target, &capture_name).is_ok() {
                         return;
                     }
                     std::thread::sleep(Duration::from_millis(100));
@@ -137,7 +138,7 @@ impl App {
         let profile_name = args.config.as_ref()
             .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
             .or(args.profile.clone())
-            .unwrap_or_else(|| "default".to_string());
+            .unwrap_or_else(|| "high_quality".to_string());
 
         let colormaps = spektrum_core::all_colormap_names();
         let profiles = list_profile_names();
@@ -198,7 +199,9 @@ fn create_source_slot(
     let pending_spectra = Arc::new(Mutex::new(VecDeque::new()));
     let pending_w = pending_spectra.clone();
     let (producer, consumer) = sample_ring_pair((spectrum.sample_rate as usize) * 2);
-    let pw_handle = spektrum_core::pipewire::spawn_capture_lockfree(Some(target.clone()), producer);
+    let capture_name = spektrum_core::pipewire::next_capture_name(id);
+    let pw_target = if target.is_empty() { None } else { Some(target.clone()) };
+    let pw_handle = spektrum_core::pipewire::spawn_capture_lockfree(pw_target, producer, capture_name.clone());
 
     let (restart_tx, restart_rx) = mpsc::channel::<DspCommand>();
     let initial_cfg = spectrum.clone();
@@ -243,6 +246,7 @@ fn create_source_slot(
         prog,
         opacity,
         colormap_name: colormap_name.to_string(),
+        capture_name,
     };
 
     (slot, pw_handle)
@@ -255,7 +259,7 @@ fn initial_profile(args: &Args) -> profiles::Profile {
         profiles::resolve_profile(name)
             .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
     } else {
-        profiles::builtin_profile("default").unwrap()
+        profiles::builtin_profile("high_quality").unwrap()
     }
 }
 
@@ -380,7 +384,6 @@ fn apply_profile(app: &mut App, name: &str) {
             app._pw_handles.pop();
         }
         let default_output = spektrum_core::pipewire::default_pulse_output_monitor()
-            .or_else(spektrum_core::pipewire::default_pulse_source)
             .unwrap_or_default();
         let default_input = spektrum_core::pipewire::default_pulse_source()
             .unwrap_or_default();
@@ -399,7 +402,7 @@ fn apply_profile(app: &mut App, name: &str) {
             };
             let (slot, pw) = create_source_slot(
                 i,
-                target,
+                target.clone(),
                 &spectrum,
                 &sc.colormap,
                 sc.contrast,
@@ -410,6 +413,20 @@ fn apply_profile(app: &mut App, name: &str) {
                 debug_profile,
                 &app.source_targets,
             );
+
+            if !target.is_empty() {
+                let capture_name = slot.capture_name.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..20 {
+                        if spektrum_core::pipewire::move_capture_to_pulse_source(&target, &capture_name).is_ok() {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    eprintln!("failed to select audio source '{target}' for source {i}");
+                });
+            }
+
             app.sources.push(slot);
             app._pw_handles.push(pw);
         }
@@ -456,7 +473,7 @@ fn apply_profile(app: &mut App, name: &str) {
         app.settings.source_labels = app.sources.iter().map(|s| s.label.clone()).collect();
         if app.args.target_object.is_empty() {
             if let Some(source) = profile.audio.source.as_deref() {
-                apply_capture_source(app, source);
+                move_capture_to_source(app, source, active);
             }
         }
     }
@@ -470,8 +487,10 @@ fn apply_profile(app: &mut App, name: &str) {
     sync_active_source_settings(app);
 }
 
-fn apply_capture_source(app: &mut App, target: &str) {
-    match spektrum_core::pipewire::move_capture_to_pulse_source(target) {
+fn move_capture_to_source(app: &mut App, target: &str, source_index: usize) {
+    let capture_name = app.sources.get(source_index).map(|s| s.capture_name.clone());
+    let Some(capture_name) = capture_name else { return; };
+    match spektrum_core::pipewire::move_capture_to_pulse_source(target, &capture_name) {
         Ok(()) => {
             let source = app.source_targets.iter()
                 .find_map(|(label, value)| (value == target).then(|| label.clone()))
@@ -482,6 +501,9 @@ fn apply_capture_source(app: &mut App, target: &str) {
                     label
                 });
             app.settings.source = source;
+            if let Some(slot) = app.sources.get_mut(source_index) {
+                slot.target = target.to_string();
+            }
         }
         Err(e) => eprintln!("failed to change audio source: {e}"),
     }
@@ -787,7 +809,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                     let name = app.settings.profile.clone();
                     match profiles::delete_user_profile(&name) {
                         Ok(()) => {
-                            app.settings.profile = "default".to_string();
+                            app.settings.profile = "high_quality".to_string();
                             refresh_libraries(app);
                         }
                         Err(e) => eprintln!("failed to delete profile: {e}"),
@@ -881,10 +903,7 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         return Task::none();
                     };
                     let active = app.settings.active_source;
-                    if let Some(slot) = app.sources.get(active) {
-                        slot.set_target(&target);
-                    }
-                    apply_capture_source(app, &target);
+                    move_capture_to_source(app, &target, active);
                 }
                 SettingsMessage::AddSource => {
                     if app.sources.len() < MAX_SOURCES {
@@ -892,7 +911,8 @@ fn update(app: &mut App, message: Message) -> Task<Message> {
                         let dev = app.sources.first().map(|s| s.prog.dev).unwrap_or_default();
                         let history = app.sources.first().map(|s| s.prog.min_history).unwrap_or(1);
                         let debug_profile = app.sources.first().map(|s| s.prog.debug_profile).unwrap_or(false);
-                        let default_target = app.source_targets.values().next().cloned().unwrap_or_default();
+                        let default_target = spektrum_core::pipewire::default_pulse_source()
+                            .unwrap_or_else(|| app.source_targets.values().next().cloned().unwrap_or_default());
                         let (slot, pw) = create_source_slot(
                             id,
                             default_target,
@@ -1022,7 +1042,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
     } else if let Some(name) = &args.profile {
         profiles::builtin_profile(name)
     } else {
-        profiles::builtin_profile("default")
+        profiles::builtin_profile("high_quality")
     };
     let img = profile_for_size.as_ref().and_then(|p| p.image.as_ref());
     let win_w = args.width.unwrap_or(img.map_or(800, |i| i.width));

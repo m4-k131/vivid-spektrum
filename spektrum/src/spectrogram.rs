@@ -658,6 +658,7 @@ struct SourceGpuState {
     bind_group: wgpu::BindGroup,
     write_row: u32,
     scroll: f32,
+    spectra_ptr: usize,
     prof_last_report: Instant,
     prof_prepare_us: u64,
     prof_cols_uploaded: u64,
@@ -731,6 +732,7 @@ fn create_source_gpu(
         bind_group,
         write_row: 0,
         scroll: 0.0,
+        spectra_ptr: 0,
         prof_last_report: Instant::now(),
         prof_prepare_us: 0,
         prof_cols_uploaded: 0,
@@ -887,6 +889,7 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
             (0.0, 0.0, 0.0)
         };
 
+        let mut latest_scroll: Option<(usize, f32)> = None;
         for (i, src) in self.sources.iter().enumerate() {
             let gpu = &mut pipeline.sources[i];
             let prev_write_row = gpu.write_row;
@@ -920,7 +923,14 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
 
             let cur_w = gpu.texture.size().width;
             let cur_h = gpu.texture.size().height;
-            if cur_w != w || cur_h != h {
+            let new_ptr = Arc::as_ptr(&src.pending_spectra) as usize;
+            let spectra_changed = gpu.spectra_ptr != new_ptr;
+            if spectra_changed {
+                gpu.spectra_ptr = new_ptr;
+                gpu.write_row = 0;
+                gpu.scroll = 0.0;
+            }
+            if cur_w != w || cur_h != h || spectra_changed {
                 gpu.texture = device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("vividspektrum-spectrum-multi"),
                     size: wgpu::Extent3d {
@@ -991,6 +1001,7 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
             }
             if let Some(y) = last_y {
                 gpu.scroll = (y as f32 + 1.0) / (h as f32);
+                latest_scroll = Some((i, gpu.scroll));
             }
 
             let mut overlay_a = [0.0f32; 4];
@@ -1062,11 +1073,14 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
         }
 
         if pipeline.sources.len() > 1 {
-            let shared_scroll = pipeline.sources[0].scroll;
-            for gpu in &mut pipeline.sources[1..] {
-                gpu.scroll = shared_scroll;
-                let scroll_bytes = bytemuck::bytes_of(&shared_scroll);
-                queue.write_buffer(&gpu.uniform, 0, scroll_bytes);
+            if let Some((latest_idx, shared_scroll)) = latest_scroll {
+                for (i, gpu) in pipeline.sources.iter_mut().enumerate() {
+                    if i != latest_idx {
+                        gpu.scroll = shared_scroll;
+                        let scroll_bytes = bytemuck::bytes_of(&shared_scroll);
+                        queue.write_buffer(&gpu.uniform, 0, scroll_bytes);
+                    }
+                }
             }
         }
     }
