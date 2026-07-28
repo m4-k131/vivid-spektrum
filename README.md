@@ -1,12 +1,12 @@
 # vividspektrum
 
-A Rust **spectrogram visualizer** that generates high-resolution, GPU-accelerated spectrograms from audio. It can render offline PNG images, a live scrolling window on Linux/Wayland, or a desktop widget via wlr-layer-shell.
+A Rust **spectrogram visualizer** that generates high-resolution, GPU-accelerated spectrograms from live audio. It renders a live scrolling window on Linux/Wayland or Windows, and can also run as a desktop widget via wlr-layer-shell.
 
 The pipeline is split into a DSP core (`spektrum-core`) and the application (`spektrum`). `spektrum-core` handles audio decoding, STFT/CQT, log-frequency mapping, colormaps and profiles; the application adds Iced/WGPU rendering, the settings overlay, and CLI front-ends.
 
 ## What it does
 
-- **Offline**: decode an audio file (WAV/MP3/FLAC/AAC/Ogg Vorbis) and render a PNG spectrogram.
+- **Offline**: removed in v0.4.0. Use the live window for spectrogram visualization.
 - **Live**: capture system audio through PipeWire (Linux) or CPAL (Windows), compute STFT/CQT columns in a background thread, and stream them to a WGPU fragment shader that performs colormap lookup, contrast and saturation in real time. Supports **multiple simultaneous audio sources** with per-source colormaps, contrast, and opacity, rendered as overlapping layers with synchronized scrolling.
 - **Widget**: run as a layer-shell overlay on wlroots/KDE Plasma, anchored to any screen edge.
 
@@ -22,11 +22,7 @@ PipeWire/CPAL → lock-free ring buffer → SpectrumProcessor (STFT/CQT)
 
 ### Offline PNG
 
-```bash
-cargo run --release -p spektrum --bin audio_to_png -- song.mp3 spectrogram.png
-```
-
-Optional: `--auto-width` makes the PNG width exactly one pixel per STFT hop. Use `--from mm:ss` and `--to mm:ss` to render a clip.
+The offline PNG generator (`audio_to_png`) has been removed. Use the live window for spectrogram visualization.
 
 ### Live window
 
@@ -240,28 +236,6 @@ Practical limits:
 | `--list-presets` | — | Print available profiles and exit |
 | `--list-overlays` | — | Print available overlays and exit |
 
-### `audio_to_png`
-
-```bash
-cargo run --release -p spektrum --bin audio_to_png -- input.mp3 out.png \
-  --profile high_quality --from 00:30 --to 01:30 --auto-width
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `input` | — | Audio file |
-| `output` | — | PNG file |
-| `--profile` / `--config` | high_quality | Profile to use |
-| `--fft`, `--hop`, `--log-bins`, `--window-fn`, `--band-agg`, `--smoothing`, `--gamma`, `--temporal-alpha`, `--peak-decay`, `--transform`, `--cqt-bpo`, `--weighting`, `--freq-scale-exp` | | Spectrum overrides (same semantics as live) |
-| `--width` | profile image | Output PNG width |
-| `--height` | profile image | Output PNG height |
-| `--auto-width` | off | Width = one pixel per STFT hop |
-| `--from` | 0:00 | Start timestamp `mm:ss` |
-| `--to` | end | End timestamp `mm:ss` |
-| `--contrast`, `--saturation` | 1.0 | GPU post-processing in PNG output |
-| `--scale` | — | JSON scale config for overlay grid |
-| `--legacy-vertical-scroll` | off | Render vertical instead of horizontal |
-
 ### `kde_overlay`
 
 | Flag | Default | Description |
@@ -314,7 +288,7 @@ See `BUILD.md` for Linux system dependencies (PipeWire, Wayland dev libs) and `W
 | Crate | Purpose |
 |-------|---------|
 | `spektrum-core` | DSP: STFT/CQT, colormaps, profiles, ring buffer, PipeWire capture. |
-| `spektrum` | Application binaries: `vividspektrum`, `audio_to_png`, `kde_overlay`, plus the Iced/WGPU shader and settings overlay. |
+| `spektrum` | Application binaries: `vividspektrum`, `kde_overlay`, plus the Iced/WGPU shader and settings overlay. |
 
 ## Changelog
 
