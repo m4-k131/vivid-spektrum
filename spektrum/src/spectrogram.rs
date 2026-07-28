@@ -1060,6 +1060,15 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
                 }
             }
         }
+
+        if pipeline.sources.len() > 1 {
+            let shared_scroll = pipeline.sources[0].scroll;
+            for gpu in &mut pipeline.sources[1..] {
+                gpu.scroll = shared_scroll;
+                let scroll_bytes = bytemuck::bytes_of(&shared_scroll);
+                queue.write_buffer(&gpu.uniform, 0, scroll_bytes);
+            }
+        }
     }
     fn draw(
         &self,
