@@ -1,0 +1,50 @@
+name = "ember-red"
+
+# Black → deep red → bright orange → saturated red-orange (no white at peaks)
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.15
+r = 0.12
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.3
+r = 0.35
+g = 0.03
+b = 0.0
+
+[[stops]]
+position = 0.45
+r = 0.6
+g = 0.1
+b = 0.0
+
+[[stops]]
+position = 0.6
+r = 0.85
+g = 0.2
+b = 0.0
+
+[[stops]]
+position = 0.75
+r = 1.0
+g = 0.35
+b = 0.0
+
+[[stops]]
+position = 0.88
+r = 1.0
+g = 0.5
+b = 0.05
+
+[[stops]]
+position = 1.0
+r = 1.0
+g = 0.6
+b = 0.1
