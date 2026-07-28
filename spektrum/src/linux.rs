@@ -59,6 +59,7 @@ impl App {
         for (index, target) in spektrum_core::pipewire::pulse_sources().into_iter().enumerate() {
             let label = source_label(index, &target);
             source_targets.insert(label.clone(), target);
+            source_list.push(label);
         }
         let source_label_str = capture_target.as_deref()
             .and_then(|target| source_targets.iter().find_map(|(label, value)| (value == target).then(|| label.clone())))
