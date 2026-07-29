@@ -254,10 +254,15 @@ fn create_source_slot(
 
 fn initial_profile(args: &Args) -> profiles::Profile {
     if let Some(path) = &args.config {
-        profiles::load_profile(path).expect("failed to load config")
+        profiles::load_profile(path).unwrap_or_else(|e| {
+            eprintln!("failed to load config '{}': {e}; using default", path.display());
+            profiles::builtin_profile("high_quality").unwrap()
+        })
     } else if let Some(name) = &args.profile {
-        profiles::resolve_profile(name)
-            .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
+        profiles::resolve_profile(name).unwrap_or_else(|e| {
+            eprintln!("{}. Available: {:?}; using default", e, profiles::list_profile_names());
+            profiles::builtin_profile("high_quality").unwrap()
+        })
     } else {
         profiles::builtin_profile("high_quality").unwrap()
     }
@@ -441,6 +446,9 @@ fn apply_profile(app: &mut App, name: &str) {
         while app.sources.len() > 1 {
             app.sources.pop();
             app._pw_handles.pop();
+        }
+        if app.sources.is_empty() {
+            return;
         }
         let colormap_name = app.args.colormap.as_deref()
             .unwrap_or(&profile.colors.colormap);

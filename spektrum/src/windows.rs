@@ -38,10 +38,15 @@ pub struct App {
 impl App {
     fn bootstrap(args: Args) -> Self {
         let profile = if let Some(path) = &args.config {
-            profiles::load_profile(path).expect("failed to load config")
+            profiles::load_profile(path).unwrap_or_else(|e| {
+                eprintln!("failed to load config '{}': {e}; using default", path.display());
+                profiles::builtin_profile("high_quality").unwrap()
+            })
         } else if let Some(name) = &args.profile {
-            profiles::resolve_profile(name)
-                .unwrap_or_else(|e| panic!("{}. Available: {:?}", e, profiles::list_profile_names()))
+            profiles::resolve_profile(name).unwrap_or_else(|e| {
+                eprintln!("{}. Available: {:?}; using default", e, profiles::list_profile_names());
+                profiles::builtin_profile("high_quality").unwrap()
+            })
         } else {
             profiles::builtin_profile("high_quality").unwrap()
         };
@@ -398,6 +403,9 @@ fn apply_profile(app: &mut App, name: &str) {
     } else {
         while app.sources.len() > 1 {
             app.sources.pop();
+        }
+        if app.sources.is_empty() {
+            return;
         }
         let active = app.settings.active_source.min(app.sources.len() - 1);
         app.settings.active_source = active;
