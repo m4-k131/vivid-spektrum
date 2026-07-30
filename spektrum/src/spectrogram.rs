@@ -752,8 +752,8 @@ impl shader::Pipeline for MultiSpectrogramGpu {
             label: Some("vividspektrum-sampler-multi"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1001,6 +1001,30 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
                 }
             }
             if let Some(y) = last_y {
+                let zero_row = vec![0u8; w as usize];
+                let clear_ahead = 4u32;
+                for dz in 1..=clear_ahead {
+                    let dy = (y + dz) % h;
+                    queue.write_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &gpu.texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d { x: 0, y: dy, z: 0 },
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &zero_row,
+                        wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(w),
+                            rows_per_image: Some(1),
+                        },
+                        wgpu::Extent3d {
+                            width: w,
+                            height: 1,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                }
                 gpu.scroll = (y as f32 + 1.0) / (h as f32);
             }
 
