@@ -89,18 +89,20 @@ fn fs_main(in: VsOut) -> @location(0) vec4<f32> {
             overlay_alpha = max(overlay_alpha, 1.0 - dist / u.overlay_thickness);
         }
     }
-    if (overlay_alpha > 0.0) {
-        c = mix(c, u.overlay_color.rgb, overlay_alpha * u.overlay_color.a);
-    }
     if (u.shared_bg == 1u) {
         let bg = vec3(u.bg_r, u.bg_g, u.bg_b);
         let signal_alpha = smoothstep(0.0, 0.03, mag) * u.opacity;
         if (u.is_first == 1u) {
-            let final_color = mix(bg, c, signal_alpha);
+            let signal_color = mix(bg, c, signal_alpha);
+            let final_color = mix(signal_color, u.overlay_color.rgb, overlay_alpha * u.overlay_color.a);
             return vec4(final_color, 1.0);
         } else {
-            return vec4(c, signal_alpha);
+            let layer_color = mix(c, u.overlay_color.rgb, overlay_alpha * u.overlay_color.a);
+            return vec4(layer_color, signal_alpha);
         }
+    }
+    if (overlay_alpha > 0.0) {
+        c = mix(c, u.overlay_color.rgb, overlay_alpha * u.overlay_color.a);
     }
     return vec4(c, u.opacity);
 }
@@ -248,7 +250,7 @@ impl shader::Pipeline for SpectrogramGpu {
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("vividspektrum-sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
@@ -889,7 +891,6 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
             (0.0, 0.0, 0.0)
         };
 
-        let mut latest_scroll: Option<(usize, f32)> = None;
         for (i, src) in self.sources.iter().enumerate() {
             let gpu = &mut pipeline.sources[i];
             let prev_write_row = gpu.write_row;
@@ -1000,8 +1001,31 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
                 }
             }
             if let Some(y) = last_y {
+                let zero_row = vec![0u8; w as usize];
+                let clear_ahead = 4u32;
+                for dz in 1..=clear_ahead {
+                    let dy = (y + dz) % h;
+                    queue.write_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &gpu.texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d { x: 0, y: dy, z: 0 },
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &zero_row,
+                        wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(w),
+                            rows_per_image: Some(1),
+                        },
+                        wgpu::Extent3d {
+                            width: w,
+                            height: 1,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                }
                 gpu.scroll = (y as f32 + 1.0) / (h as f32);
-                latest_scroll = Some((i, gpu.scroll));
             }
 
             let mut overlay_a = [0.0f32; 4];
@@ -1073,14 +1097,13 @@ impl shader::Primitive for MultiSpectrogramPrimitive {
         }
 
         if pipeline.sources.len() > 1 {
-            if let Some((latest_idx, shared_scroll)) = latest_scroll {
-                for (i, gpu) in pipeline.sources.iter_mut().enumerate() {
-                    if i != latest_idx {
-                        gpu.scroll = shared_scroll;
-                        let scroll_bytes = bytemuck::bytes_of(&shared_scroll);
-                        queue.write_buffer(&gpu.uniform, 0, scroll_bytes);
-                    }
-                }
+            let shared_scroll = pipeline.sources.iter()
+                .map(|gpu| gpu.scroll)
+                .fold(0.0f32, f32::max);
+            for gpu in &mut pipeline.sources {
+                gpu.scroll = shared_scroll;
+                let scroll_bytes = bytemuck::bytes_of(&shared_scroll);
+                queue.write_buffer(&gpu.uniform, 0, scroll_bytes);
             }
         }
     }

@@ -357,21 +357,21 @@ impl SettingsState {
                 info_icon("GPU contrast. 1.0 is neutral, >1 increases, <1 decreases."),
             ]
             .align_y(Alignment::Center),
-            slider(0.0f32..=3.0f32, self.contrast, SettingsMessage::SetContrast).step(0.05),
+            slider(0.0f32..=3.0f32, self.contrast, SettingsMessage::SetContrast).step(0.05_f32),
             row![
                 text(format!("Saturation {:.2}", self.saturation)).size(12),
                 Space::new().width(Length::Fill),
                 info_icon("GPU saturation. 0 = grayscale, 1 = normal, >1 boosted."),
             ]
             .align_y(Alignment::Center),
-            slider(0.0f32..=3.0f32, self.saturation, SettingsMessage::SetSaturation).step(0.05),
+            slider(0.0f32..=3.0f32, self.saturation, SettingsMessage::SetSaturation).step(0.05_f32),
             row![
                 text(format!("Opacity {:.2}", self.opacity)).size(12),
                 Space::new().width(Length::Fill),
                 info_icon("Layer opacity for alpha blending. 1.0 = fully opaque, 0.0 = invisible."),
             ]
             .align_y(Alignment::Center),
-            slider(0.0f32..=1.0f32, self.opacity, SettingsMessage::SetOpacity).step(0.05),
+            slider(0.0f32..=1.0f32, self.opacity, SettingsMessage::SetOpacity).step(0.05_f32),
             label_row("Audio source", "PipeWire/PulseAudio capture source for this source slot."),
             pick_list(sources, Some(self.source.clone()), SettingsMessage::SetSource)
                 .text_size(11)
@@ -511,13 +511,13 @@ impl SettingsState {
                         button("Remove").on_press(SettingsMessage::DeleteColorStop(index)),
                     ].spacing(6).align_y(Alignment::Center),
                     text(format!("Position {:.2}", position)).size(11),
-                    slider(0.0..=1.0, position, move |value| SettingsMessage::SetColorStop(index, 0, value)).step(0.01),
+                    slider(0.0..=1.0, position, move |value| SettingsMessage::SetColorStop(index, 0, value)).step(0.01_f32),
                     text(format!("Red {:.2}", r)).size(11),
-                    slider(0.0..=1.0, r, move |value| SettingsMessage::SetColorStop(index, 1, value)).step(0.01),
+                    slider(0.0..=1.0, r, move |value| SettingsMessage::SetColorStop(index, 1, value)).step(0.01_f32),
                     text(format!("Green {:.2}", g)).size(11),
-                    slider(0.0..=1.0, g, move |value| SettingsMessage::SetColorStop(index, 2, value)).step(0.01),
+                    slider(0.0..=1.0, g, move |value| SettingsMessage::SetColorStop(index, 2, value)).step(0.01_f32),
                     text(format!("Blue {:.2}", b)).size(11),
-                    slider(0.0..=1.0, b, move |value| SettingsMessage::SetColorStop(index, 3, value)).step(0.01),
+                    slider(0.0..=1.0, b, move |value| SettingsMessage::SetColorStop(index, 3, value)).step(0.01_f32),
                 ].spacing(4));
             }
         }

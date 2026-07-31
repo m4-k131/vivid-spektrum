@@ -33,7 +33,6 @@ jobs:
         run: |
           mkdir -p vividspektrum-linux
           cp target/release/vividspektrum vividspektrum-linux/
-          cp target/release/kde_overlay vividspektrum-linux/
           cp -r colormaps overlays vividspektrum-linux/ || true
           tar czf vividspektrum-linux-x86_64.tar.gz vividspektrum-linux
 

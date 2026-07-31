@@ -1,0 +1,50 @@
+name = "deep-blue"
+
+# Black → deep navy → blue → bright cyan-blue (saturated, no white at peaks)
+[[stops]]
+position = 0.0
+r = 0.0
+g = 0.0
+b = 0.0
+
+[[stops]]
+position = 0.15
+r = 0.0
+g = 0.0
+b = 0.08
+
+[[stops]]
+position = 0.3
+r = 0.0
+g = 0.03
+b = 0.2
+
+[[stops]]
+position = 0.45
+r = 0.0
+g = 0.1
+b = 0.4
+
+[[stops]]
+position = 0.6
+r = 0.0
+g = 0.25
+b = 0.65
+
+[[stops]]
+position = 0.75
+r = 0.05
+g = 0.45
+b = 0.85
+
+[[stops]]
+position = 0.88
+r = 0.1
+g = 0.65
+b = 0.95
+
+[[stops]]
+position = 1.0
+r = 0.15
+g = 0.75
+b = 1.0

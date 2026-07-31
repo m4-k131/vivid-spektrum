@@ -83,7 +83,10 @@ pub fn spawn_dsp_thread(
 
         let mut cfg = initial_cfg;
         let mut backlog_cap = (history as usize).saturating_mul(8).saturating_add(256).max(1024);
-        let mut proc = spektrum_core::SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+        let mut proc = match spektrum_core::SpectrumProcessor::new(cfg.clone()) {
+            Ok(p) => p,
+            Err(e) => { eprintln!("failed to create spectrum processor: {e}"); return; }
+        };
         let mut paused = false;
 
         loop {
@@ -91,7 +94,10 @@ pub fn spawn_dsp_thread(
                 match cmd {
                     DspCommand::Restart(new_cfg, new_history) => {
                         cfg = new_cfg;
-                        proc = spektrum_core::SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+                        proc = match spektrum_core::SpectrumProcessor::new(cfg.clone()) {
+                            Ok(p) => p,
+                            Err(e) => { eprintln!("failed to restart spectrum processor: {e}"); return; }
+                        };
                         backlog_cap = (new_history as usize).saturating_mul(8).saturating_add(256).max(1024);
                         if debug_profile {
                             eprintln!("[profile] DSP restart: fft={} hop={} bins={}", cfg.window_size, cfg.hop_size, cfg.log_bins);
@@ -107,7 +113,10 @@ pub fn spawn_dsp_thread(
                     DspCommand::SetPaused(value) => {
                         paused = value;
                         if !paused {
-                            proc = spektrum_core::SpectrumProcessor::new(cfg.clone()).expect("spectrum processor");
+                            proc = match spektrum_core::SpectrumProcessor::new(cfg.clone()) {
+                            Ok(p) => p,
+                            Err(e) => { eprintln!("failed to restart spectrum processor: {e}"); return; }
+                        };
                         }
                     }
                 }
